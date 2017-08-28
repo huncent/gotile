@@ -1,9 +1,7 @@
 package tile_surge
 
 import (
-	//l "github.com/murphy214/layersplit"
 	m "github.com/murphy214/mercantile"
-	//pc "github.com/murphy214/polyclip"
 	"github.com/paulmach/go.geojson"
 	"os"
 	"strconv"
@@ -13,11 +11,12 @@ import (
 	"github.com/golang/protobuf/proto"
 	"io/ioutil"
 	"reflect"
+	"sync"
 )
 
-var total = 0
-var total2 = 0
+var dirmap sync.Map
 
+// reflects a tile value back and stuff
 func Reflect_Value(v interface{}) *vector_tile.Tile_Value {
 	var tv *vector_tile.Tile_Value
 	//fmt.Print(v)
@@ -69,6 +68,8 @@ func Make_Tv_Int(val int) *vector_tile.Tile_Value {
 }
 
 // updates all values and tags
+// handles 4 objects keys,values,keymap,valuesmap
+// also returns tags
 func Update_Properties(properties map[string]interface{}, keys []string, values []*vector_tile.Tile_Value, keysmap map[string]uint32, valuesmap map[*vector_tile.Tile_Value]uint32) ([]uint32, []string, []*vector_tile.Tile_Value, map[string]uint32, map[*vector_tile.Tile_Value]uint32) {
 	tags := []uint32{}
 	// iterating through each property
@@ -77,7 +78,6 @@ func Update_Properties(properties map[string]interface{}, keys []string, values 
 
 		// logic for keys
 		keyint, keybool := keysmap[k]
-		// logic for if it isnt in keymap
 		if keybool == false {
 			keys = append(keys, k)
 			keysmap[k] = uint32(len(keys) - 1)
@@ -88,7 +88,6 @@ func Update_Properties(properties map[string]interface{}, keys []string, values 
 
 		// logic for keys
 		valueint, valuebool := valuesmap[value]
-		// logic for if it isnt in keymap
 		if valuebool == false {
 			values = append(values, value)
 			valuesmap[value] = uint32(len(values) - 1)
@@ -102,49 +101,117 @@ func Update_Properties(properties map[string]interface{}, keys []string, values 
 	return tags, keys, values, keysmap, valuesmap
 }
 
+type Properties_Config struct {
+	Keys        []string
+	KeysCount   uint32
+	Values      []*vector_tile.Tile_Value
+	ValuesCount uint32
+	KeysMap     sync.Map
+	ValuesMap   sync.Map
+}
+
+// updates all values and tags
+// handles 4 objects keys,values,keymap,valuesmap
+// also returns tags
+func Update_Properties2(properties map[string]interface{}, prop Properties_Config) ([]uint32, Properties_Config) {
+	tags := []uint32{}
+	// iterating through each property
+	for k, v := range properties {
+		value := Reflect_Value(v)
+
+		// logic for keys
+		keyint, keybool := prop.KeysMap.LoadOrStore(k, prop.KeysCount)
+		if keybool == false {
+			prop.Keys = append(prop.Keys, k)
+			tags = append(tags, prop.KeysCount)
+			prop.KeysCount += 1
+
+		} else {
+			//eh := keyint.(int)
+			eh, _ := keyint.(uint32) // Alt. non panicking version
+
+			tags = append(tags, eh)
+		}
+		// logic for keys
+		valueint, valuebool := prop.KeysMap.LoadOrStore(k, prop.KeysCount)
+		if valuebool == false {
+			prop.Values = append(prop.Values, value)
+			tags = append(tags, prop.ValuesCount)
+			prop.ValuesCount += 1
+
+		} else {
+			eh, _ := valueint.(uint32) // Alt. non panicking version
+
+			tags = append(tags, eh)
+		}
+	}
+
+	return tags, prop
+}
+
 // makes a single tile for a given polygon
 func Make_Tile(tileid m.TileID, feats []*geojson.Feature, prefix string) {
 	filename := prefix + "/" + strconv.Itoa(int(tileid.Z)) + "/" + strconv.Itoa(int(tileid.X)) + "/" + strconv.Itoa(int(tileid.Y))
 	dir := prefix + "/" + strconv.Itoa(int(tileid.Z)) + "/" + strconv.Itoa(int(tileid.X))
-	os.MkdirAll(dir, os.ModePerm)
+
+	// implementing an async map
+	_, boolval := dirmap.Load(dir)
+	if boolval == false {
+		os.MkdirAll(dir, os.ModePerm)
+		dirmap.Store(dir, "")
+
+	}
+
 	bound := m.Bounds(tileid)
-	var keys []string
-	var values []*vector_tile.Tile_Value
-	keysmap := map[string]uint32{}
-	valuesmap := map[*vector_tile.Tile_Value]uint32{}
+	//var keys []string
+	//var values []*vector_tile.Tile_Value
+	//keysmap := map[string]uint32{}
+	//valuesmap := map[*vector_tile.Tile_Value]uint32{}
 
 	// iterating through each feature
 	features := []*vector_tile.Tile_Feature{}
 	//position := []int32{0, 0}
+	prop := Properties_Config{KeysCount: 0, ValuesCount: 0}
+	c := make(chan vector_tile.Tile_Feature)
 	for _, i := range feats {
-		var tags, geometry []uint32
-		var feat vector_tile.Tile_Feature
-		tags, keys, values, keysmap, valuesmap = Update_Properties(i.Properties, keys, values, keysmap, valuesmap)
+		go func(i *geojson.Feature, c chan vector_tile.Tile_Feature) {
+			var tags, geometry []uint32
+			var feat vector_tile.Tile_Feature
+			tags, prop = Update_Properties2(i.Properties, prop)
 
-		// logic for point feature
-		if i.Geometry.Type == "Point" {
-			geometry, _ = Make_Point(i.Geometry.Point, []int32{0, 0}, bound)
-			feat_type := vector_tile.Tile_POINT
-			feat = vector_tile.Tile_Feature{Tags: tags, Type: &feat_type, Geometry: geometry}
-			features = append(features, &feat)
-
-		} else if i.Geometry.Type == "LineString" {
-			eh := Make_Coords_Float(i.Geometry.LineString, bound, tileid)
-			if len(eh) > 0 {
-				geometry, _ = Make_Line_Geom(eh, []int32{0, 0})
-				feat_type := vector_tile.Tile_LINESTRING
+			// logic for point feature
+			if i.Geometry.Type == "Point" {
+				geometry, _ = Make_Point(i.Geometry.Point, []int32{0, 0}, bound)
+				feat_type := vector_tile.Tile_POINT
 				feat = vector_tile.Tile_Feature{Tags: tags, Type: &feat_type, Geometry: geometry}
-				features = append(features, &feat)
+
+			} else if i.Geometry.Type == "LineString" {
+				eh := Make_Coords_Float(i.Geometry.LineString, bound, tileid)
+				if len(eh) > 1 {
+					geometry, _ = Make_Line_Geom(eh, []int32{0, 0})
+					feat_type := vector_tile.Tile_LINESTRING
+					feat = vector_tile.Tile_Feature{Tags: tags, Type: &feat_type, Geometry: geometry}
+				}
+			} else if i.Geometry.Type == "Polygon" {
+				geometry, _ = Make_Polygon(Make_Coords_Polygon_Float(i.Geometry.Polygon, bound), []int32{0, 0})
+				feat_type := vector_tile.Tile_POLYGON
+				feat = vector_tile.Tile_Feature{Tags: tags, Type: &feat_type, Geometry: geometry}
+
 			}
 
-		} else if i.Geometry.Type == "Polygon" {
-			geometry, _ = Make_Polygon(Make_Coords_Polygon_Float(i.Geometry.Polygon, bound), []int32{0, 0})
-			feat_type := vector_tile.Tile_POLYGON
-			feat = vector_tile.Tile_Feature{Tags: tags, Type: &feat_type, Geometry: geometry}
-			features = append(features, &feat)
+			// sending through channel
+			c <- feat
 
+		}(i, c)
+
+	}
+
+	// collecting each feature
+	for range feats {
+		msg1 := <-c
+		if len(msg1.Geometry) > 0 {
+			features = append(features, &msg1)
 		}
-
 	}
 
 	layerVersion := uint32(15)
@@ -155,8 +222,8 @@ func Make_Tile(tileid m.TileID, feats []*geojson.Feature, prefix string) {
 		Version:  &layerVersion,
 		Name:     &layername,
 		Extent:   &extent,
-		Values:   values,
-		Keys:     keys,
+		Values:   prop.Values,
+		Keys:     prop.Keys,
 		Features: features,
 	}
 
@@ -165,6 +232,6 @@ func Make_Tile(tileid m.TileID, feats []*geojson.Feature, prefix string) {
 
 	bytevals, _ := proto.Marshal(&tile)
 	ioutil.WriteFile(filename, bytevals, 0666)
-
+	//fmt.Print(filename, bytevals, "\n")
 	//fmt.Printf("\r%s", filename)
 }

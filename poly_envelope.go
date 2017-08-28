@@ -1,16 +1,19 @@
 package tile_surge
 
+// This part of the package consists of code to trim or envelope the polygons
+// It also contains the subsequent code for creating polygon children.
+
 import (
 	//"fmt"
-	l "github.com/murphy214/layersplit"
 	m "github.com/murphy214/mercantile"
 	pc "github.com/murphy214/polyclip"
 	"github.com/paulmach/go.geojson"
 	"math"
-	"strings"
 )
 
 // function for getting the extrema of an alignment
+// it also converts the points from [][][]float64 > pc.Polygon
+// in other words the clipping data structure
 func get_extrema_coords(coords [][][]float64) (m.Extrema, pc.Polygon) {
 	north := -1000.
 	south := 1000.
@@ -19,8 +22,11 @@ func get_extrema_coords(coords [][][]float64) (m.Extrema, pc.Polygon) {
 	lat := 0.
 	long := 0.
 	polygon := pc.Polygon{}
+
+	// iterating through each outer ring
 	for _, coord := range coords {
 		cont := pc.Contour{}
+		// iterating through each point in a ring
 		for _, i := range coord {
 			lat = i[1]
 			long = i[0]
@@ -44,62 +50,11 @@ func get_extrema_coords(coords [][][]float64) (m.Extrema, pc.Polygon) {
 		polygon.Add(cont)
 	}
 
-	// sorting both lats and longs
-	//fmt.Print("e,", east, "w,", west, "s,", south, "n,", north)
-
 	return m.Extrema{S: south, W: west, N: north, E: east}, polygon
 
 }
 
-// takes the geohash to  arange
-func geoHash2ranges(hash string) (float64, float64, float64, float64) {
-	latMin, latMax := -90.0, 90.0
-	lngMin, lngMax := -180.0, 180.0
-	even := true
-
-	for _, r := range hash {
-		// TODO: index step could probably be done better
-		i := strings.Index("0123456789bcdefghjkmnpqrstuvwxyz", string(r))
-		for j := 0x10; j != 0; j >>= 1 {
-			if even {
-				mid := (lngMin + lngMax) / 2.0
-				if i&j == 0 {
-					lngMax = mid
-				} else {
-					lngMin = mid
-				}
-			} else {
-				mid := (latMin + latMax) / 2.0
-				if i&j == 0 {
-					latMax = mid
-				} else {
-					latMin = mid
-				}
-			}
-			even = !even
-		}
-	}
-	if latMin < latMax {
-		holder := latMin
-		latMax = holder
-		latMax = latMin
-
-	}
-	if lngMin < lngMax {
-		holder := lngMin
-		lngMax = holder
-		lngMax = lngMin
-
-	}
-	return lngMin, lngMax, latMin, latMax
-}
-
-// gets the extrema object of  a given geohash
-func Geohash_Bounds(ghash string) m.Extrema {
-	w, e, s, n := geoHash2ranges(ghash)
-	return m.Extrema{S: s, W: w, N: n, E: e}
-}
-
+// gets the size of a tileid
 func get_size(tile m.TileID) pc.Point {
 	bds := m.Bounds(tile)
 	return pc.Point{bds.E - bds.W, bds.N - bds.S}
@@ -118,6 +73,7 @@ func linspace(val1 float64, val2 float64, number int) []float64 {
 	return newlist
 }
 
+// gets the middle of a tileid
 func get_middle(tile m.TileID) pc.Point {
 	bds := m.Bounds(tile)
 	return pc.Point{(bds.E + bds.W) / 2.0, (bds.N + bds.S) / 2.0}
@@ -196,7 +152,7 @@ func make_polygon_list(totalkeys []int, contmap map[int]pc.Contour, relationmap 
 
 }
 
-// creates a within map
+// creates a within map or a mapping of each edge
 func Create_Withinmap(contmap map[int]pc.Contour) []pc.Polygon {
 	totalkeys := []int{}
 	relationmap := map[int][]int{}
@@ -211,6 +167,8 @@ func Create_Withinmap(contmap map[int]pc.Contour) []pc.Polygon {
 }
 
 // lints each polygon
+// takes abstract polygon rings that may contain polygon rings
+// and returns geojson arranged polygon sets
 func Lint_Polygons(polygon pc.Polygon) []pc.Polygon {
 	contmap := map[int]pc.Contour{}
 	for i, cont := range polygon {
@@ -218,10 +176,10 @@ func Lint_Polygons(polygon pc.Polygon) []pc.Polygon {
 	}
 	return Create_Withinmap(contmap)
 
-	// making contour map
-
 }
 
+// from a pc.Polygon representation (clipping representation)
+// to a [][][]float64 representation
 func Convert_Float(poly pc.Polygon) [][][]float64 {
 	total := [][][]float64{}
 	for _, cont := range poly {
@@ -234,6 +192,7 @@ func Convert_Float(poly pc.Polygon) [][][]float64 {
 	return total
 }
 
+// output structure to ensure everything stays in a key value stroe
 type Output struct {
 	Total [][][][]float64
 	ID    m.TileID
@@ -344,51 +303,13 @@ func Make_Tile_Poly(tile m.TileID) pc.Polygon {
 	return pc.Polygon{{pc.Point{bds.E, bds.N}, pc.Point{bds.W, bds.N}, pc.Point{bds.W, bds.S}, pc.Point{bds.E, bds.S}}}
 }
 
-// fixes bounds somewhere
-func fixbounds(polygon l.Polygon) m.Extrema {
-
-	poly := polygon.Polygon
-	bds := polygon.Bounds
-	for _, i := range poly {
-		newbds := i.BoundingBox()
-		if newbds.Min.Y < bds.S {
-			bds.S = newbds.Min.Y
-		}
-		if newbds.Max.Y > bds.N {
-			bds.N = newbds.Max.Y
-		}
-		if newbds.Min.X < bds.W {
-			bds.W = newbds.Min.X
-		}
-		if newbds.Max.X > bds.E {
-			bds.E = newbds.Max.X
-		}
-	}
-	return bds
-}
-func Unique(elements []int) []int {
-	// Use map to record duplicates as we find them.
-	encountered := map[int]bool{}
-	result := []int{}
-	for v := range elements {
-		if encountered[elements[v]] == true {
-			// Do not add duplicate.
-		} else {
-			// Record this element as an encountered element.
-			encountered[elements[v]] = true
-			// Append to result slice.
-			result = append(result, elements[v])
-		}
-	}
-	// Return the new slice.
-	return result
-}
-
+// area of bds (of a square)
 func AreaBds(ext m.Extrema) float64 {
 	return (ext.N - ext.S) * (ext.E - ext.W)
 }
 
 // given a polygon to be tiled envelopes the polygon in corresponding boxes
+// from a polygon and a tileid return the tiles relating to the polygon 1 level lower
 func Children_Polygon(polygon *geojson.Feature, tileid m.TileID) map[m.TileID][]*geojson.Feature {
 	// getting bds
 	bd, poly := get_extrema_coords(polygon.Geometry.Polygon)
@@ -427,6 +348,8 @@ func Children_Polygon(polygon *geojson.Feature, tileid m.TileID) map[m.TileID][]
 	//fmt.Print("\r", len(polygon.Geometry.Polygon[0]))
 
 	c := make(chan Output)
+	// creating the 4 possible children tiles
+	// and sending into a go function
 	tiles := m.Children(tileid)
 	for _, k := range tiles {
 		newpoly := poly

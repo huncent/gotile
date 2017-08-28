@@ -6,6 +6,7 @@ import (
 	m "github.com/murphy214/mercantile"
 	pc "github.com/murphy214/polyclip"
 	"github.com/paulmach/go.geojson"
+	"math"
 	"sort"
 	"strings"
 )
@@ -47,15 +48,18 @@ func get_coords_json2(stringcoords string) [][][]float64 {
 	return res.Coords
 }
 
+// distance between two points
 func distance_pts(oldpt pc.Point, pt pc.Point) Size2 {
-	return Size2{pt.X - oldpt.X, pt.Y - oldpt.Y}
+	return Size2{math.Abs(pt.X - oldpt.X), math.Abs(pt.Y - oldpt.Y)}
 
 }
 
+// distance of bounds
 func distance_bounds(bds m.Extrema) Size2 {
 	return Size2{bds.E - bds.W, bds.N - bds.S}
 }
 
+// decides which plane something itersects with
 func which_plane(oldpt pc.Point, pt pc.Point, oldbds m.Extrema) string {
 	xs := []float64{oldpt.X, pt.X}
 	sort.Float64s(xs)
@@ -64,12 +68,6 @@ func which_plane(oldpt pc.Point, pt pc.Point, oldbds m.Extrema) string {
 	sort.Float64s(ys)
 
 	mybds := m.Extrema{W: xs[0], E: xs[1], S: ys[0], N: ys[1]}
-
-	//if (pt.Y == 39.371616) || (oldpt.Y == 39.371616) {
-	//	fmt.Print("here!\n")
-	//	fmt.Print(mybds.N, mybds.S, "mybds\n")
-	//	fmt.Print(oldbds.N, oldbds.S, "oldextrema\n")
-	//}
 
 	if (mybds.N >= oldbds.N) && (mybds.S <= oldbds.N) {
 		return "north"
@@ -101,6 +99,7 @@ func opp_interp(pt1 pc.Point, pt2 pc.Point, y float64) pc.Point {
 	return pc.Point{x, y}
 }
 
+// checks a boudning box
 func check_bb(oldpt pc.Point, pt pc.Point, intersectpt pc.Point) bool {
 	xs := []float64{oldpt.X, pt.X}
 	sort.Float64s(xs)
@@ -146,6 +145,8 @@ func get_intersection_pt(oldpt pc.Point, pt pc.Point, oldbds m.Extrema) (pc.Poin
 
 	return trypt, axis
 }
+
+// gets an intersection point
 func itersection_pt(oldpt pc.Point, pt pc.Point, oldbds m.Extrema, axis string) []float64 {
 	//fmt.Printf("%f,%f\n", trypt.X, trypt.Y)
 	if axis == "west" {
@@ -186,23 +187,6 @@ func convert_tile_coords(total [][]pc.Point) {
 
 }
 
-// preliminary logic for getting out polygons from said lines
-// Each line should have the followoing
-// bounds (maybenot)
-// axis beg
-// axis end
-// tilestr
-// will probably put in struct called meta something
-// which will then be placed in two different maps (maybe
-// if mapped lists maintain there order
-
-// pc.Point represents a pc.Point in space.
-type TileMeta struct {
-	AxisS  string
-	AxisE  string
-	Bounds m.Extrema
-}
-
 // is the number even
 func Even(number int) bool {
 	return number%2 == 0
@@ -211,86 +195,6 @@ func Even(number int) bool {
 // is the number odd?
 func Odd(number int) bool {
 	return !Even(number)
-}
-
-// pc.Point in polygon derived from the xmap data structure
-func Pip_simple(pt pc.Point, topmap map[string][]float64, latconst float64, size int) bool {
-	ghash := m.Tile_Geohash(pt.X, latconst, size)
-	ycollisions := topmap[ghash]
-	//fmt.Print(ycollisions)
-	y := 0.0
-	count := 0
-	oldy := 0.0
-	for i := range ycollisions {
-		y = ycollisions[i]
-		if count == 0 {
-			count = 1
-		} else {
-			if (oldy < pt.Y) && (y > pt.Y) && (Odd(count) == true) {
-				return true
-			}
-			count += 1
-
-		}
-		oldy = y
-
-	}
-	return false
-}
-
-// checks a single geohash for its occurance in an alignment
-// checks at each of the four corners of the geohash for its existance in the polygon
-// *		* < testing these corners
-//
-//     -	<- this is the normal decode pc.Point
-//
-// *		* < testing these corners
-func Check_single_ghash(ghash string, totalmap map[string][]float64, zoom int) (map[string]pc.Point, []string) {
-	extrema := m.Bounds(m.Strtile(ghash))
-
-	///fmt.Printf("%f,%f\n", extrema.e, extrema.n)
-	//fmt.Printf("%f,%f\n", extrema.w, extrema.n)
-	//fmt.Printf("%f,%f\n", extrema.e, extrema.s)
-	//fmt.Printf("%f,%f\n", extrema.w, extrema.s)
-	latconst := totalmap["latconst"][0]
-
-	// checking each cornerr pc.Point
-	boolupperright := Pip_simple(pc.Point{extrema.E - .0000001, extrema.N - .0000001}, totalmap, latconst, zoom)
-	boolupperleft := Pip_simple(pc.Point{extrema.W + .0000001, extrema.N - .0000001}, totalmap, latconst, zoom)
-	boollowerright := Pip_simple(pc.Point{extrema.E - .0000001, extrema.S + .0000001}, totalmap, latconst, zoom)
-	boollowerleft := Pip_simple(pc.Point{extrema.W + .0000001, extrema.S + .0000001}, totalmap, latconst, zoom)
-
-	//fmt.Print("upperleft:", boolupperleft, ", lowerright:", boollowerright, " lowerleft:", boollowerleft, " upperright:", boolupperright, "\n")
-	geomshouldinclude := map[string]pc.Point{}
-	keys := []string{}
-	if boolupperright == true {
-		geomshouldinclude["upperright"] = pc.Point{extrema.E, extrema.N}
-		//fmt.Printf("%f,%f\n", extrema.E, extrema.N)
-		keys = append(keys, "upperright")
-	}
-
-	if boolupperleft == true {
-		geomshouldinclude["upperleft"] = pc.Point{extrema.W, extrema.N}
-		keys = append(keys, "upperleft")
-
-		//fmt.Printf("%f,%f\n", extrema.W, extrema.N)
-	}
-
-	if boollowerright == true {
-		geomshouldinclude["lowerright"] = pc.Point{extrema.E, extrema.S}
-		//fmt.Printf("%f,%f\n", extrema.E, extrema.S)
-		keys = append(keys, "lowerright")
-
-	}
-
-	if boollowerleft == true {
-		geomshouldinclude["lowerleft"] = pc.Point{extrema.W, extrema.S}
-		keys = append(keys, "lowerleft")
-
-		//fmt.Printf("%f,%f\n", extrema.W, extrema.S)
-	}
-	//fmt.Print(ghash, "    ", Get_XY(pt[0], pt[1], float64(currentsize)), "\n")
-	return geomshouldinclude, keys
 }
 
 func opp_axis(val string) string {
@@ -307,92 +211,87 @@ func opp_axis(val string) string {
 	return val
 }
 
-// Point represents a point in space.
-type Line_Edge struct {
-	Line       []pc.Point
-	Gid        string
-	Properties []interface{}
-}
-
 // functionifying this section so it doesnt get massive pretty decent break point
 func Env_Line(line *geojson.Feature, zoom int) map[m.TileID][]*geojson.Feature {
-	count := 0
+	// intializes variables
 	var oldpt pc.Point
 	var tileid, oldtileid m.TileID
 	var bds, oldbds m.Extrema
 	var axis string
 	var tilecoords [][]float64
 	var intersectpt []float64
-	//var totaltilecoords [][]Point
-	//var mapmeta
-	//var oldrow []float64
-	//axisbeg := "hee"
 	tilemap := map[m.TileID][]*geojson.Feature{}
+
+	// getting properties for later
 	properties := line.Properties
-	for _, ept := range line.Geometry.LineString {
+
+	// iterating through each point
+	ept := line.Geometry.LineString[0]
+	oldpt = pc.Point{ept[0], ept[1]}
+	oldtileid = m.Tile(oldpt.X, oldpt.Y, zoom)
+	oldbds = m.Bounds(oldtileid)
+
+	geoms := line.Geometry.LineString[1:]
+	tilecoords = append(tilecoords, ept)
+
+	for _, ept := range geoms {
+		// getting pt,tileid and bounds
 		pt := pc.Point{X: ept[0], Y: ept[1]}
 		tileid = m.Tile(pt.X, pt.Y, zoom)
 		bds = m.Bounds(tileid)
-		if count == 0 {
-			count = 1
-			tilecoords = append(tilecoords, ept)
 
-		} else {
-			// shit goes down here
-			// getting the distances between two coordinate points
-			dist := distance_pts(oldpt, pt)
+		// skipping first pt
 
-			if tileid != oldtileid {
-				bnddist := distance_bounds(bds)
+		// shit goes down here
+		// getting the distances between two coordinate points
+		dist := distance_pts(oldpt, pt)
 
-				// if one of the distances violates or is greater than the distance
-				// for bounds it will be sent into a tile creation function
-				if (bnddist.deltaX < dist.deltaX) || (bnddist.deltaY < dist.deltaY) {
-					// send to tile generation function
+		// if the point delta we are straddling is between two tileids
+		// i.e. has crossed one of planes
+		if tileid != oldtileid {
+			bnddist := distance_bounds(bds)
 
-				} else {
-					// otherwise handle normally finding the intersection point and adding in the
-					// the end of tile coords
-					//intersectpt, axis = get_intersection_pt(oldpt, pt, oldbds)
-					axis = which_plane(oldpt, pt, oldbds)
-					intersectpt = itersection_pt(oldpt, pt, oldbds, axis)
-					//tilecoords = append(tilecoords, []float64{oldpt.X, oldpt.Y})
-
-					tilecoords = append(tilecoords, intersectpt)
-
-					//newfeat := line
-					newgeom := geojson.Geometry{Type: "LineString"}
-					newgeom.LineString = tilecoords
-					newfeat := geojson.Feature{Geometry: &newgeom, Properties: properties}
-					tilemap[oldtileid] = append(tilemap[oldtileid], &newfeat)
-
-					tilecoords = [][]float64{intersectpt}
-					//axisbeg := opp_axis(axis)
-				}
+			// if one of the distances violates or is greater than the distance
+			// for bounds it will be sent into a tile creation function
+			if (bnddist.deltaX < dist.deltaX) || (bnddist.deltaY < dist.deltaY) {
+				// send to tile generation function
+				// an edge case I don't cover yet
 			} else {
+				// otherwise handle normally finding the intersection point and adding in the
+				// the end of tile coords
+				axis = which_plane(oldpt, pt, oldbds)
+				intersectpt = itersection_pt(oldpt, pt, oldbds, axis)
 				tilecoords = append(tilecoords, []float64{oldpt.X, oldpt.Y})
 
-			}
+				tilecoords = append(tilecoords, intersectpt)
 
-			//fmt.Print(tilecoords, "\n")
-			//fmt.Print(distance_pts(oldpt, pt), "\n")
-			//fmt.Print(oldpt, oldtileid, "\n")
+				// creating new geometry
+				newgeom := geojson.Geometry{Type: "LineString"}
+				newgeom.LineString = tilecoords
+				tilemap[oldtileid] = append(tilemap[oldtileid], &geojson.Feature{Geometry: &newgeom, Properties: properties})
+
+				// setting tile coords back to only the intersection point
+				tilecoords = [][]float64{intersectpt}
+
+			}
+		} else {
+			tilecoords = append(tilecoords, []float64{oldpt.X, oldpt.Y})
 
 		}
 
+		// stateful stuff
 		oldpt = pt
 		oldtileid = tileid
 		oldbds = bds
-		//oldrow = row
 	}
 
+	// adding the last point
 	tilecoords = append(tilecoords, []float64{oldpt.X, oldpt.Y})
 
-	// account for if all points were in the square
+	// adding the last feature
 	newe := geojson.Geometry{Type: "LineString"}
 	newe.LineString = tilecoords
-	newee := geojson.Feature{Geometry: &newe, Properties: properties}
-	tilemap[tileid] = append(tilemap[tileid], &newee)
+	tilemap[oldtileid] = append(tilemap[oldtileid], &geojson.Feature{Geometry: &newe, Properties: properties})
 
 	return tilemap
 }
@@ -431,7 +330,15 @@ func Get_string(align []pc.Point) string {
 	return fmt.Sprintf("[%s]", strings.Join(newlist, ","))
 }
 
-// Point represents a point in space.
-type Output_Map struct {
-	Map map[m.TileID][]Line_Edge
+// lints the children of a partmap
+func Lint_Children_Lines(tilemap map[m.TileID][]*geojson.Feature, k m.TileID) map[m.TileID][]*geojson.Feature {
+	childtiles := m.Children(k)
+	newtilemap := map[m.TileID][]*geojson.Feature{}
+
+	// iterating through each child
+	for _, child := range childtiles {
+		newtilemap[child] = tilemap[child]
+	}
+
+	return newtilemap
 }

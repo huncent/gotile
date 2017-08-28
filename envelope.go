@@ -7,13 +7,17 @@ import (
 	"github.com/paulmach/go.geojson"
 	//"strings"
 	"fmt"
+	"sync"
 )
 
+// makes a tilemap and returns
 func Make_Tilemap(feats *geojson.FeatureCollection, size int) map[m.TileID][]*geojson.Feature {
 	c := make(chan map[m.TileID][]*geojson.Feature)
 	for _, i := range feats.Features {
+		partmap := map[m.TileID][]*geojson.Feature{}
+
 		go func(i *geojson.Feature, size int, c chan map[m.TileID][]*geojson.Feature) {
-			partmap := map[m.TileID][]*geojson.Feature{}
+			//partmap := map[m.TileID][]*geojson.Feature{}
 
 			if i.Geometry.Type == "Polygon" {
 				partmap = Env_Polygon(i, size)
@@ -62,7 +66,8 @@ func Make_Tilemap_Children(tilemap map[m.TileID][]*geojson.Feature, prefix strin
 					if i.Geometry.Type == "Polygon" {
 						cc <- Children_Polygon(i, k)
 					} else if i.Geometry.Type == "LineString" {
-						cc <- Env_Line(i, int(k.Z+1))
+						partmap := Env_Line(i, int(k.Z+1))
+						cc <- partmap
 					} else if i.Geometry.Type == "Point" {
 						partmap := map[m.TileID][]*geojson.Feature{}
 						pt := i.Geometry.Point
@@ -82,20 +87,17 @@ func Make_Tilemap_Children(tilemap map[m.TileID][]*geojson.Feature, prefix strin
 				}
 			}
 
-			c := make(chan string)
+			// making each value in the created childmap and
+			// waiting to complete
+			var wg sync.WaitGroup
 			for k, v := range childmap {
-				go func(k m.TileID, v []*geojson.Feature, prefix string, c chan string) {
+				wg.Add(1)
+				go func(k m.TileID, v []*geojson.Feature, prefix string) {
 					Make_Tile(k, v, prefix)
-					c <- ""
-				}(k, v, prefix, c)
+					wg.Done()
+				}(k, v, prefix)
 			}
-
-			count := 0
-			for range childmap {
-				msg1 := <-c
-				fmt.Printf("%s", msg1)
-				count += 1
-			}
+			wg.Wait()
 
 			ccc <- childmap
 		}(k, v, ccc)
@@ -124,30 +126,24 @@ func Make_Tilemap_Children(tilemap map[m.TileID][]*geojson.Feature, prefix strin
 }
 
 // makes children and returns tilemap of a first intialized tilemap
-func Make_Tilemap_Children2(tilemap map[m.TileID][]*geojson.Feature, prefix string, endsize int) {
+func Intialize_Drill(tilemap map[m.TileID][]*geojson.Feature, prefix string, endsize int) {
 
 	// iterating through each tileid
-	ccc := make(chan string)
-	//newmap := map[m.TileID][]*geojson.Feature{}
 	count2 := 0
-	//counter := 0
 	sizetilemap := len(tilemap)
-	//buffer := 100000
-	//if sizetilemap > 10000 {
-	//	buffer = sizetilemap / 5
-	//}
-	for k, v := range tilemap {
-		go func(k m.TileID, v []*geojson.Feature, ccc chan string) {
-			Make_Zoom_Drill(k, v, prefix, endsize)
-			ccc <- ""
-		}(k, v, ccc)
-	}
+	var wg sync.WaitGroup
 
-	for range tilemap {
-		fmt.Printf("\r[%d / %d] Tiles Recursively Drilled to endsize, %d", count2, sizetilemap, endsize)
-		fmt.Print(<-ccc)
-		count2 += 1
+	for k, v := range tilemap {
+		wg.Add(1)
+		go func(k m.TileID, v []*geojson.Feature) {
+			Make_Zoom_Drill(k, v, prefix, endsize)
+			fmt.Printf("\r[%d / %d] Tiles Recursively Drilled to endsize, %d", count2, sizetilemap, endsize)
+			count2 += 1
+
+			wg.Done()
+		}(k, v)
 	}
+	wg.Wait()
 }
 
 // recursively drills until the max zoom is reached
@@ -159,7 +155,9 @@ func Make_Zoom_Drill(k m.TileID, v []*geojson.Feature, prefix string, endsize in
 			if i.Geometry.Type == "Polygon" {
 				cc <- Children_Polygon(i, k)
 			} else if i.Geometry.Type == "LineString" {
-				cc <- Env_Line(i, int(k.Z+1))
+				partmap := Env_Line(i, int(k.Z+1))
+				partmap = Lint_Children_Lines(partmap, k)
+				cc <- partmap
 			} else if i.Geometry.Type == "Point" {
 				partmap := map[m.TileID][]*geojson.Feature{}
 				pt := i.Geometry.Point
@@ -179,32 +177,19 @@ func Make_Zoom_Drill(k m.TileID, v []*geojson.Feature, prefix string, endsize in
 		}
 	}
 
-	c := make(chan string)
+	// iterating through each value in the child map and waiting to complete
+	var wg sync.WaitGroup
 	for k, v := range childmap {
-		go func(k m.TileID, v []*geojson.Feature, prefix string, c chan string) {
+		wg.Add(1)
+		go func(k m.TileID, v []*geojson.Feature, prefix string) {
 			Make_Tile(k, v, prefix)
-			c <- ""
-		}(k, v, prefix, c)
-	}
-
-	count := 0
-	for range childmap {
-		msg1 := <-c
-		fmt.Printf("%s", msg1)
-		count += 1
-	}
-
-	if endsize != outputsize {
-		chans := make(chan string)
-		for k, v := range childmap {
-			go func(k m.TileID, v []*geojson.Feature, endsize int, chans chan string) {
+			if endsize != outputsize {
 				Make_Zoom_Drill(k, v, prefix, endsize)
-				c <- ""
-			}(k, v, endsize, chans)
-		}
+			}
+			wg.Done()
 
-		for range childmap {
-			fmt.Print(<-c)
-		}
+		}(k, v, prefix)
 	}
+	wg.Wait()
+
 }

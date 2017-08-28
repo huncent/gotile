@@ -15,6 +15,7 @@ func Distance(p1 pc.Point, p2 pc.Point) float64 {
 	return math.Sqrt(first + second)
 }
 
+// converts a single point from a coordinate to a tile point
 func single_point(row pc.Point, bound m.Extrema) []int32 {
 	deltax := (bound.E - bound.W)
 	deltay := (bound.N - bound.S)
@@ -38,6 +39,7 @@ func single_point(row pc.Point, bound m.Extrema) []int32 {
 	return []int32{xval, yval}
 }
 
+// makes coordinates for a line
 func Make_Coords(coord []pc.Point, bound m.Extrema, tileid m.TileID) [][]int32 {
 	var newlist [][]int32
 	var oldpt []int32
@@ -74,12 +76,11 @@ func Make_Coords(coord []pc.Point, bound m.Extrema, tileid m.TileID) [][]int32 {
 		}
 	}
 
-	//distval := math.Sqrt(math.Pow(math.Abs(float64(east)-float64(west)), 2) + math.Pow(math.Abs(float64(north)-float64(south)), 2))
-
 	return newlist
 
 }
 
+// makes coordinates for a line that is float
 func Make_Coords_Float(coord [][]float64, bound m.Extrema, tileid m.TileID) [][]int32 {
 	var newlist [][]int32
 	var oldpt []int32
@@ -116,28 +117,6 @@ func Make_Coords_Float(coord [][]float64, bound m.Extrema, tileid m.TileID) [][]
 		}
 	}
 
-	//distval := math.Sqrt(math.Pow(math.Abs(float64(east)-float64(west)), 2) + math.Pow(math.Abs(float64(north)-float64(south)), 2))
-	//mt.Print(distval, east, west, north, south, "\n")
-	if len(newlist) == 1 {
-		return [][]int32{}
-	}
-	//} else if (distval < 16) && (tileid.Z > 10) {
-	//fmt.Print(distval, "\n")
-
-	//	return [][]int32{}
-	//}
-
-	return newlist
-
-}
-
-func Make_Coords2(coord []pc.Point, bound m.Extrema) [][]int32 {
-	var newlist [][]int32
-	//var oldi []float64
-
-	for _, i := range coord {
-		newlist = append(newlist, single_point(i, bound))
-	}
 	return newlist
 
 }
@@ -145,7 +124,6 @@ func Make_Coords2(coord []pc.Point, bound m.Extrema) [][]int32 {
 // makes polygon layer for cordinate positions
 func Make_Coords_Polygon(polygon pc.Polygon, bound m.Extrema) [][][]int32 {
 	var newlist [][][]int32
-	//var oldi []float64
 
 	for _, cont := range polygon {
 		newcont := [][]int32{}
@@ -161,15 +139,28 @@ func Make_Coords_Polygon(polygon pc.Polygon, bound m.Extrema) [][][]int32 {
 // makes polygon layer for cordinate positions
 func Make_Coords_Polygon_Float(polygon [][][]float64, bound m.Extrema) [][][]int32 {
 	var newlist [][][]int32
-	//var oldi []float64
+	oldpt := []int32{0, 0}
 
 	for _, cont := range polygon {
 		newcont := [][]int32{}
+		count := 0
 		for _, i := range cont {
-			newcont = append(newcont, single_point(pc.Point{i[0], i[1]}, bound))
+			pt := single_point(pc.Point{i[0], i[1]}, bound)
+			if count == 0 {
+				count = 1
+				newcont = append(newcont, pt)
+
+			} else {
+				if ((oldpt[0] == pt[0]) && (oldpt[1] == pt[1])) == false {
+					newcont = append(newcont, pt)
+				}
+
+			}
+			oldpt = pt
 		}
 		newlist = append(newlist, newcont)
 	}
+
 	return newlist
 
 }

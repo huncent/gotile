@@ -6,6 +6,7 @@ import (
 	m "github.com/murphy214/mercantile"
 	"github.com/paulmach/go.geojson"
 	"io/ioutil"
+	"sync"
 	"time"
 )
 
@@ -17,67 +18,7 @@ func Read_Geojson(filename string) *geojson.FeatureCollection {
 }
 
 // creates the tiles from a given configuration
-func Make_Tiles_Geojson(gjson *geojson.FeatureCollection, prefix string, zooms []int) {
-	// reading geojson
-	s := time.Now()
-	// iterating through each zoom
-	for _, i := range zooms {
-		// creating tilemap
-		tilemap := Make_Tilemap(gjson, i)
-
-		// iterating through each tileid in the tilemap
-		c := make(chan string)
-		for k, v := range tilemap {
-			go func(k m.TileID, v []*geojson.Feature, prefix string, c chan string) {
-				Make_Tile(k, v, prefix)
-				c <- ""
-			}(k, v, prefix, c)
-		}
-		count := 0
-		sizetilemap := len(tilemap)
-		for range tilemap {
-			msg1 := <-c
-			fmt.Printf("\r[%d / %d] Tiles Complete of Size %d%s", count, sizetilemap, i, msg1)
-			count += 1
-		}
-
-	}
-	fmt.Printf("\nCompleted in %s.\n", time.Now().Sub(s))
-}
-
-// creates the tiles from a given configuration
-func Make_Tiles_Geojson2(gjson *geojson.FeatureCollection, prefix string, zooms []int) {
-	// reading geojson
-	s := time.Now()
-	// iterating through each zoom
-	// creating tilemap
-	tilemap := Make_Tilemap(gjson, zooms[0])
-
-	// iterating through each tileid in the tilemap
-	c := make(chan string)
-	for k, v := range tilemap {
-		go func(k m.TileID, v []*geojson.Feature, prefix string, c chan string) {
-			Make_Tile(k, v, prefix)
-			c <- ""
-		}(k, v, prefix, c)
-	}
-	count := 0
-	sizetilemap := len(tilemap)
-	for range tilemap {
-		msg1 := <-c
-		fmt.Printf("\r[%d / %d] Tiles Complete of Size %d%s", count, sizetilemap, zooms[0], msg1)
-		count += 1
-	}
-
-	for range zooms[1:] {
-		tilemap = Make_Tilemap_Children(tilemap, prefix)
-	}
-
-	fmt.Printf("\nCompleted in %s.\n", time.Now().Sub(s))
-}
-
-// creates the tiles from a given configuration
-func Make_Tiles_Geojson3(gjson *geojson.FeatureCollection, prefix string, zooms []int) {
+func Make_Tiles(gjson *geojson.FeatureCollection, prefix string, zooms []int) {
 	fmt.Print("Writing Layers ", zooms, "\n")
 	// reading geojson
 	s := time.Now()
@@ -87,24 +28,23 @@ func Make_Tiles_Geojson3(gjson *geojson.FeatureCollection, prefix string, zooms 
 	tilemap := Make_Tilemap(gjson, zooms[0])
 
 	// iterating through each tileid in the tilemap
-	c := make(chan string)
-	for k, v := range tilemap {
-		go func(k m.TileID, v []*geojson.Feature, prefix string, c chan string) {
-			Make_Tile(k, v, prefix)
-			c <- ""
-		}(k, v, prefix, c)
-	}
-	count := 0
 	sizetilemap := len(tilemap)
-	for range tilemap {
-		msg1 := <-c
-		fmt.Printf("\r[%d / %d] Tiles Complete of Size %d%s", count, sizetilemap, zooms[0], msg1)
-		count += 1
+	count := 0
+	var wg sync.WaitGroup
+	for k, v := range tilemap {
+		wg.Add(1)
+		go func(k m.TileID, v []*geojson.Feature, prefix string) {
+			Make_Tile(k, v, prefix)
+			fmt.Printf("\r[%d / %d] Tiles Complete of Size %d", count, sizetilemap, zooms[0])
+			count += 1
+			wg.Done()
+		}(k, v, prefix)
 	}
-	tilemap = Make_Tilemap_Children(tilemap, prefix)
-	tilemap = Make_Tilemap_Children(tilemap, prefix)
+	wg.Wait()
 
-	Make_Tilemap_Children2(tilemap, prefix, zooms[len(zooms)-1])
+	// drilling if needed
+	// sending the tilemap into the driller
+	Intialize_Drill(tilemap, prefix, zooms[len(zooms)-1])
 
 	fmt.Printf("\nCompleted in %s.\n", time.Now().Sub(s))
 }
