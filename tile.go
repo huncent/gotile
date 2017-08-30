@@ -148,70 +148,49 @@ func Update_Properties2(properties map[string]interface{}, prop Properties_Confi
 
 	return tags, prop
 }
-
 // makes a single tile for a given polygon
 func Make_Tile(tileid m.TileID, feats []*geojson.Feature, prefix string) {
 	filename := prefix + "/" + strconv.Itoa(int(tileid.Z)) + "/" + strconv.Itoa(int(tileid.X)) + "/" + strconv.Itoa(int(tileid.Y))
 	dir := prefix + "/" + strconv.Itoa(int(tileid.Z)) + "/" + strconv.Itoa(int(tileid.X))
-
-	// implementing an async map
-	_, boolval := dirmap.Load(dir)
-	if boolval == false {
-		os.MkdirAll(dir, os.ModePerm)
-		dirmap.Store(dir, "")
-
-	}
-
+	os.MkdirAll(dir, os.ModePerm)
 	bound := m.Bounds(tileid)
-	//var keys []string
-	//var values []*vector_tile.Tile_Value
-	//keysmap := map[string]uint32{}
-	//valuesmap := map[*vector_tile.Tile_Value]uint32{}
+	var keys []string
+	var values []*vector_tile.Tile_Value
+	keysmap := map[string]uint32{}
+	valuesmap := map[*vector_tile.Tile_Value]uint32{}
 
 	// iterating through each feature
 	features := []*vector_tile.Tile_Feature{}
 	//position := []int32{0, 0}
-	prop := Properties_Config{KeysCount: 0, ValuesCount: 0}
-	c := make(chan vector_tile.Tile_Feature)
 	for _, i := range feats {
-		go func(i *geojson.Feature, c chan vector_tile.Tile_Feature) {
-			var tags, geometry []uint32
-			var feat vector_tile.Tile_Feature
-			tags, prop = Update_Properties2(i.Properties, prop)
+		var tags, geometry []uint32
+		var feat vector_tile.Tile_Feature
+		tags, keys, values, keysmap, valuesmap = Update_Properties(i.Properties, keys, values, keysmap, valuesmap)
 
-			// logic for point feature
-			if i.Geometry.Type == "Point" {
-				geometry, _ = Make_Point(i.Geometry.Point, []int32{0, 0}, bound)
-				feat_type := vector_tile.Tile_POINT
+		// logic for point feature
+		if i.Geometry.Type == "Point" {
+			geometry, _ = Make_Point(i.Geometry.Point, []int32{0, 0}, bound)
+			feat_type := vector_tile.Tile_POINT
+			feat = vector_tile.Tile_Feature{Tags: tags, Type: &feat_type, Geometry: geometry}
+			features = append(features, &feat)
+
+		} else if i.Geometry.Type == "LineString" {
+			eh := Make_Coords_Float(i.Geometry.LineString, bound, tileid)
+			if len(eh) > 0 {
+				geometry, _ = Make_Line_Geom(eh, []int32{0, 0})
+				feat_type := vector_tile.Tile_LINESTRING
 				feat = vector_tile.Tile_Feature{Tags: tags, Type: &feat_type, Geometry: geometry}
-
-			} else if i.Geometry.Type == "LineString" {
-				eh := Make_Coords_Float(i.Geometry.LineString, bound, tileid)
-				if len(eh) > 1 {
-					geometry, _ = Make_Line_Geom(eh, []int32{0, 0})
-					feat_type := vector_tile.Tile_LINESTRING
-					feat = vector_tile.Tile_Feature{Tags: tags, Type: &feat_type, Geometry: geometry}
-				}
-			} else if i.Geometry.Type == "Polygon" {
-				geometry, _ = Make_Polygon(Make_Coords_Polygon_Float(i.Geometry.Polygon, bound), []int32{0, 0})
-				feat_type := vector_tile.Tile_POLYGON
-				feat = vector_tile.Tile_Feature{Tags: tags, Type: &feat_type, Geometry: geometry}
-
+				features = append(features, &feat)
 			}
 
-			// sending through channel
-			c <- feat
+		} else if i.Geometry.Type == "Polygon" {
+			geometry, _ = Make_Polygon(Make_Coords_Polygon_Float(i.Geometry.Polygon, bound), []int32{0, 0})
+			feat_type := vector_tile.Tile_POLYGON
+			feat = vector_tile.Tile_Feature{Tags: tags, Type: &feat_type, Geometry: geometry}
+			features = append(features, &feat)
 
-		}(i, c)
-
-	}
-
-	// collecting each feature
-	for range feats {
-		msg1 := <-c
-		if len(msg1.Geometry) > 0 {
-			features = append(features, &msg1)
 		}
+
 	}
 
 	layerVersion := uint32(15)
@@ -222,8 +201,8 @@ func Make_Tile(tileid m.TileID, feats []*geojson.Feature, prefix string) {
 		Version:  &layerVersion,
 		Name:     &layername,
 		Extent:   &extent,
-		Values:   prop.Values,
-		Keys:     prop.Keys,
+		Values:   values,
+		Keys:     keys,
 		Features: features,
 	}
 
@@ -231,7 +210,10 @@ func Make_Tile(tileid m.TileID, feats []*geojson.Feature, prefix string) {
 	tile.Layers = append(tile.Layers, &layer)
 
 	bytevals, _ := proto.Marshal(&tile)
-	ioutil.WriteFile(filename, bytevals, 0666)
-	//fmt.Print(filename, bytevals, "\n")
+	if len(bytevals) > 0{
+		ioutil.WriteFile(filename, bytevals, 0666)
+
+	}
+
 	//fmt.Printf("\r%s", filename)
 }

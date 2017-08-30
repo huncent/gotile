@@ -197,6 +197,9 @@ func Odd(number int) bool {
 	return !Even(number)
 }
 
+// gets the axis opp from the last 
+// LOGIC := if were crossing one tile and going into another
+// whatever plane we cross is opposite of the previous
 func opp_axis(val string) string {
 	if val == "north" {
 		return "south"
@@ -256,6 +259,7 @@ func Env_Line(line *geojson.Feature, zoom int) map[m.TileID][]*geojson.Feature {
 			if (bnddist.deltaX < dist.deltaX) || (bnddist.deltaY < dist.deltaY) {
 				// send to tile generation function
 				// an edge case I don't cover yet
+				//tilemap = Add_Tilemap_Segment(oldpt,pt,zoom,tilemap)
 			} else {
 				// otherwise handle normally finding the intersection point and adding in the
 				// the end of tile coords
@@ -296,6 +300,7 @@ func Env_Line(line *geojson.Feature, zoom int) map[m.TileID][]*geojson.Feature {
 	return tilemap
 }
 
+// translations. that probably aren't needed
 func translate(val string) string {
 	if "upper" == val {
 		return "north"
@@ -309,6 +314,7 @@ func translate(val string) string {
 	return val
 }
 
+// translations. that probably aren't needed
 func opp_translate(val string) string {
 	if "north" == val {
 		return "upper"

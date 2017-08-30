@@ -48,3 +48,43 @@ func Make_Tiles(gjson *geojson.FeatureCollection, prefix string, zooms []int) {
 
 	fmt.Printf("\nCompleted in %s.\n", time.Now().Sub(s))
 }
+
+
+// creates the tiles from a given configuration
+func Make_Tiles_Sql_Map(gjson *geojson.FeatureCollection,k m.TileID, prefix string, zooms []int) {
+	fmt.Print("Writing Layers ", zooms, "\n")
+	// reading geojson
+	s := time.Now()
+
+	// iterating through each zoom
+	// creating tilemap
+	tilemap := Make_Tilemap(gjson, zooms[0])
+	children := m.Children(k)
+	newtilemap := map[m.TileID][]*geojson.Feature{}
+	for _,child := range children {
+		newtilemap[child] = tilemap[child]
+	}
+	tilemap = newtilemap
+
+
+	// iterating through each tileid in the tilemap
+	sizetilemap := len(tilemap)
+	count := 0
+	var wg sync.WaitGroup
+	for k, v := range tilemap {
+		wg.Add(1)
+		go func(k m.TileID, v []*geojson.Feature, prefix string) {
+			Make_Tile(k, v, prefix)
+			fmt.Printf("\r[%d / %d] Tiles Complete of Size %d", count, sizetilemap, zooms[0])
+			count += 1
+			wg.Done()
+		}(k, v, prefix)
+	}
+	wg.Wait()
+
+	// drilling if needed
+	// sending the tilemap into the driller
+	Intialize_Drill(tilemap, prefix, zooms[len(zooms)-1])
+
+	fmt.Printf("\nCompleted in %s.\n", time.Now().Sub(s))
+}

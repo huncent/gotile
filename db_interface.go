@@ -16,7 +16,7 @@ import (
 func Add_BBox(tablename string, tileid m.TileID) string {
 	bds := m.Bounds(tileid)
 
-	return fmt.Sprintf("(%s.geom && ST_MakeEnvelope(%f, %f, %f, %f, 4326))", tablename, bds.S, bds.W, bds.N, bds.E)
+	return fmt.Sprintf("(%s.geom && ST_MakeEnvelope(%f, %f, %f, %f, 4326))", tablename, bds.W, bds.S, bds.E, bds.N)
 
 }
 

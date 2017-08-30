@@ -36,6 +36,13 @@ func single_point(row pc.Point, bound m.Extrema) []int32 {
 		yval = 4095
 	}
 
+	if xval < 0 {
+		xval = 0
+	}
+	if yval < 0 {
+		yval = 0
+	}
+
 	return []int32{xval, yval}
 }
 
@@ -139,28 +146,15 @@ func Make_Coords_Polygon(polygon pc.Polygon, bound m.Extrema) [][][]int32 {
 // makes polygon layer for cordinate positions
 func Make_Coords_Polygon_Float(polygon [][][]float64, bound m.Extrema) [][][]int32 {
 	var newlist [][][]int32
-	oldpt := []int32{0, 0}
+	//var oldi []float64
 
 	for _, cont := range polygon {
 		newcont := [][]int32{}
-		count := 0
 		for _, i := range cont {
-			pt := single_point(pc.Point{i[0], i[1]}, bound)
-			if count == 0 {
-				count = 1
-				newcont = append(newcont, pt)
-
-			} else {
-				if ((oldpt[0] == pt[0]) && (oldpt[1] == pt[1])) == false {
-					newcont = append(newcont, pt)
-				}
-
-			}
-			oldpt = pt
+			newcont = append(newcont, single_point(pc.Point{i[0], i[1]}, bound))
 		}
 		newlist = append(newlist, newcont)
 	}
-
 	return newlist
 
 }

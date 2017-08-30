@@ -171,8 +171,8 @@ func Make_Zoom_Drill(k m.TileID, v []*geojson.Feature, prefix string, endsize in
 	// collecting all into child map
 	childmap := map[m.TileID][]*geojson.Feature{}
 	for range v {
-		tempmap := <-cc
-		for k, v := range tempmap {
+		partmap := <-cc
+		for k, v := range partmap {
 			childmap[k] = append(childmap[k], v...)
 		}
 	}
@@ -180,6 +180,7 @@ func Make_Zoom_Drill(k m.TileID, v []*geojson.Feature, prefix string, endsize in
 	// iterating through each value in the child map and waiting to complete
 	var wg sync.WaitGroup
 	for k, v := range childmap {
+		//childmap = map[m.TileID][]*geojson.Feature{}
 		wg.Add(1)
 		go func(k m.TileID, v []*geojson.Feature, prefix string) {
 			Make_Tile(k, v, prefix)
