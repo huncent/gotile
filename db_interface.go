@@ -6,10 +6,13 @@ import (
 	"github.com/jackc/pgx"
 	_ "github.com/lib/pq"
 	m "github.com/murphy214/mercantile"
+	pc "github.com/murphy214/polyclip"
 	"github.com/paulmach/go.geojson"
 	"reflect"
 	"strconv"
 	"strings"
+	//"sync"
+
 )
 
 // returns the bbox logic from a table name and tileid
@@ -157,4 +160,66 @@ func DB_Interface(database string, query string) *geojson.FeatureCollection {
 	}
 
 	return featcollection
+}
+
+
+// getting the extent of a given database
+func Get_Extent(database string,tablename string) m.Extrema {
+	sqlquery := fmt.Sprintf("SELECT ST_Extent(geom) as table_extent FROM %s;",tablename)
+
+	// intializing the config
+	a := pgx.ConnPoolConfig{
+		ConnConfig: pgx.ConnConfig{
+			Host:     "localhost",
+			Port:     5432,
+			Database: database,
+			User:     "postgres",
+		},
+		MaxConnections: 1,
+	}
+
+	// creating the connection
+	p, _ := pgx.NewConnPool(a)
+
+	rows, _ := p.Query(sqlquery)
+	var bbox string
+	for rows.Next() {
+		vals, _ := rows.Values()
+		bbox = vals[0].(string)
+	}
+	bbox = bbox[4:len(bbox) - 1]
+	bbox = strings.Replace(bbox,","," ",1)
+	vals := strings.Split(bbox," ")
+	west,_ := strconv.ParseFloat(vals[0],64)
+	south,_ := strconv.ParseFloat(vals[1],64)
+	east,_ := strconv.ParseFloat(vals[2],64)
+	north,_ := strconv.ParseFloat(vals[3],64)
+
+	return m.Extrema{N:north,S:south,E:east,W:west}
+}
+
+
+// making the tilemap for each tileslice in a given row
+func Make_Tilelist(ext m.Extrema,minzoom int) []m.TileID {
+	tileid := m.Tile(ext.W,ext.S,minzoom)
+	bds := m.Bounds(tileid)
+	startpt := []float64{(bds.E+bds.W)/2.0,(bds.N+bds.S)/2.0}
+	currenty := startpt[1]
+	currentx := startpt[0]
+	startx := startpt[0]
+	size := pc.Point{bds.E-bds.W,bds.N-bds.S}
+	tilelist := []m.TileID{}
+
+
+	for currenty < ext.N {
+		currentx = startx
+		for currentx < ext.E {
+			tileid := m.Tile(currentx,currenty,minzoom)
+			tilelist = append(tilelist,tileid)
+			currentx += size.X
+		}
+		currenty += size.Y
+	}
+	return tilelist
+
 }

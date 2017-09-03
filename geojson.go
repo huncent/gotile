@@ -6,7 +6,7 @@ import (
 	m "github.com/murphy214/mercantile"
 	"github.com/paulmach/go.geojson"
 	"io/ioutil"
-	"sync"
+	//"sync"
 	"time"
 )
 
@@ -17,74 +17,79 @@ func Read_Geojson(filename string) *geojson.FeatureCollection {
 	return fc1
 }
 
+type Config struct {
+	Type string // json, mbtiles, or files
+	Minzoom int
+	Maxzoom int
+	Prefix string
+	Zooms []int
+	Outputjsonfilename string
+	Outputmbtilesfilename string
+}
+
+func Expand_Config(config Config) Config {
+	count := config.Minzoom
+	zooms := []int{}
+	for count <= config.Maxzoom {
+		zooms = append(zooms,count)
+		count += 1
+	}
+
+	config.Zooms = zooms
+	config.Outputjsonfilename = config.Prefix + ".json"
+	config.Outputmbtilesfilename = config.Prefix + ".mbtiles"
+	return config
+}
+
 // creates the tiles from a given configuration
-func Make_Tiles(gjson *geojson.FeatureCollection, prefix string, zooms []int) {
-	fmt.Print("Writing Layers ", zooms, "\n")
+func Make_Tiles(gjson *geojson.FeatureCollection, config Config) {
+	config = Expand_Config(config)
+
+	fmt.Print("Writing Layers ", config.Zooms, "\n")
 	// reading geojson
 	s := time.Now()
 
 	// iterating through each zoom
 	// creating tilemap
-	tilemap := Make_Tilemap(gjson, zooms[0])
-
+	tilemap := Make_Tilemap(gjson, config.Minzoom)
+	prefix := config.Prefix
 	// iterating through each tileid in the tilemap
-	sizetilemap := len(tilemap)
+	//sizetilemap := len(tilemap)
 	count := 0
-	var wg sync.WaitGroup
+	totalmap := map[m.TileID]Vector_Tile{}
+	c := make(chan Vector_Tile)
 	for k, v := range tilemap {
-		wg.Add(1)
-		go func(k m.TileID, v []*geojson.Feature, prefix string) {
-			Make_Tile(k, v, prefix)
-			fmt.Printf("\r[%d / %d] Tiles Complete of Size %d", count, sizetilemap, zooms[0])
+		go func(k m.TileID, v []*geojson.Feature, prefix string,c chan Vector_Tile) {
+			c <- Make_Tile(k, v, prefix,config)
+			//fmt.Printf("\r[%d / %d] Tiles Complete of Size %d", count, sizetilemap, zooms[0])
 			count += 1
-			wg.Done()
-		}(k, v, prefix)
+		}(k, v, prefix,c)
 	}
-	wg.Wait()
+
+	for range tilemap {
+		v := <- c
+		totalmap[v.Tileid] = v
+	}
+
+
 
 	// drilling if needed
 	// sending the tilemap into the driller
-	Intialize_Drill(tilemap, prefix, zooms[len(zooms)-1])
+	totalmap = Intialize_Drill(tilemap,config,totalmap)
+
+	if config.Type == "json" {
+		Write_Json(totalmap,config.Outputjsonfilename)
+	} else if config.Type == "mbtiles" {
+		db := Create_Database_Meta(config,gjson.Features[0])
+		db = Insert_Data2(totalmap,db)
+		Make_Index(db)
+	}
+
+
+
+
+	//fmt.Print(len(totalmap),"\n")
 
 	fmt.Printf("\nCompleted in %s.\n", time.Now().Sub(s))
 }
 
-
-// creates the tiles from a given configuration
-func Make_Tiles_Sql_Map(gjson *geojson.FeatureCollection,k m.TileID, prefix string, zooms []int) {
-	fmt.Print("Writing Layers ", zooms, "\n")
-	// reading geojson
-	s := time.Now()
-
-	// iterating through each zoom
-	// creating tilemap
-	tilemap := Make_Tilemap(gjson, zooms[0])
-	children := m.Children(k)
-	newtilemap := map[m.TileID][]*geojson.Feature{}
-	for _,child := range children {
-		newtilemap[child] = tilemap[child]
-	}
-	tilemap = newtilemap
-
-
-	// iterating through each tileid in the tilemap
-	sizetilemap := len(tilemap)
-	count := 0
-	var wg sync.WaitGroup
-	for k, v := range tilemap {
-		wg.Add(1)
-		go func(k m.TileID, v []*geojson.Feature, prefix string) {
-			Make_Tile(k, v, prefix)
-			fmt.Printf("\r[%d / %d] Tiles Complete of Size %d", count, sizetilemap, zooms[0])
-			count += 1
-			wg.Done()
-		}(k, v, prefix)
-	}
-	wg.Wait()
-
-	// drilling if needed
-	// sending the tilemap into the driller
-	Intialize_Drill(tilemap, prefix, zooms[len(zooms)-1])
-
-	fmt.Printf("\nCompleted in %s.\n", time.Now().Sub(s))
-}

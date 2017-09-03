@@ -8,8 +8,8 @@ import (
 	"vector-tile/2.1"
 	//"strings"
 	//"fmt"
+	//"io/ioutil"
 	"github.com/golang/protobuf/proto"
-	"io/ioutil"
 	"reflect"
 	"sync"
 )
@@ -148,11 +148,23 @@ func Update_Properties2(properties map[string]interface{}, prop Properties_Confi
 
 	return tags, prop
 }
+	
+func check(e error) {
+    if e != nil {
+        panic(e)
+    }
+}
+
 // makes a single tile for a given polygon
-func Make_Tile(tileid m.TileID, feats []*geojson.Feature, prefix string) {
+func Make_Tile(tileid m.TileID, feats []*geojson.Feature, prefix string,config Config) Vector_Tile {
+
 	filename := prefix + "/" + strconv.Itoa(int(tileid.Z)) + "/" + strconv.Itoa(int(tileid.X)) + "/" + strconv.Itoa(int(tileid.Y))
 	dir := prefix + "/" + strconv.Itoa(int(tileid.Z)) + "/" + strconv.Itoa(int(tileid.X))
-	os.MkdirAll(dir, os.ModePerm)
+	
+	if config.Type == "files" {
+		os.MkdirAll(dir, os.ModePerm)
+	}
+
 	bound := m.Bounds(tileid)
 	var keys []string
 	var values []*vector_tile.Tile_Value
@@ -210,10 +222,10 @@ func Make_Tile(tileid m.TileID, feats []*geojson.Feature, prefix string) {
 	tile.Layers = append(tile.Layers, &layer)
 
 	bytevals, _ := proto.Marshal(&tile)
-	if len(bytevals) > 0{
-		ioutil.WriteFile(filename, bytevals, 0666)
-
-	}
+	return Vector_Tile{Data:bytevals,Filename:filename,Tileid:tileid}
+	
 
 	//fmt.Printf("\r%s", filename)
 }
+
+
