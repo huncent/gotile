@@ -2,26 +2,30 @@ package tile_surge
 
 import (
 	m "github.com/murphy214/mercantile"
-	pc "github.com/murphy214/polyclip"
+	"math"
+	//pc "github.com/murphy214/polyclip"
 )
 
-func Pos() []int32 {
-	return []int32{0, 0}
+
+type Cursor struct {
+	Geometry []uint32
+	LastPoint []int32
+	Bounds m.Extrema
+	DeltaX float64 // delta between bounds
+	DeltaY float64 // delta between bounds
+	Count uint32
 }
 
-func moverow(row []int32, geometry []uint32) []uint32 {
-	geometry = append(geometry, moveTo(1))
-	geometry = append(geometry, uint32(paramEnc(row[0])))
-	geometry = append(geometry, uint32(paramEnc(row[1])))
-	return geometry
+const mercatorPole = 20037508.34
 
-}
-func linerow(row []int32, geometry []uint32) []uint32 {
-	geometry = append(geometry, uint32(paramEnc(row[0])))
-	geometry = append(geometry, uint32(paramEnc(row[1])))
-	return geometry
+func Convert_Point(point []float64) []float64 {
+	x := mercatorPole / 180.0 * point[0]
 
+	y := math.Log(math.Tan((90.0+point[1])*math.Pi/360.0)) / math.Pi * mercatorPole
+	y = math.Max(-mercatorPole, math.Min(y, mercatorPole))
+	return []float64{x,y}
 }
+
 
 func cmdEnc(id uint32, count uint32) uint32 {
 	return (id & 0x7) | (count << 3)
@@ -41,75 +45,67 @@ func closePath(count uint32) uint32 {
 
 func paramEnc(value int32) int32 {
 	return (value << 1) ^ (value >> 31)
+}	
+
+func (cur Cursor) MovePoint(point []int32) Cursor {
+	cur.Geometry = append(cur.Geometry, moveTo(1))
+	cur.Geometry = append(cur.Geometry, uint32(paramEnc(point[0]-cur.LastPoint[0])))
+	cur.Geometry = append(cur.Geometry, uint32(paramEnc(point[1]-cur.LastPoint[1])))
+	cur.LastPoint = point
+	return cur
 }
 
-func Make_Point(row []float64, oldrow []int32, bound m.Extrema) ([]uint32, []int32) {
-	deltax := (bound.E - bound.W)
-	deltay := (bound.N - bound.S)
+func (cur Cursor) LinePoint(point []int32) Cursor {
+	deltax := point[0]-cur.LastPoint[0]
+	deltay := point[1]-cur.LastPoint[1]
+	if ((deltax == 0) && (deltay == 0)) == false {
+		cur.Geometry = append(cur.Geometry, uint32(paramEnc(deltax)))
+		cur.Geometry = append(cur.Geometry, uint32(paramEnc(deltay)))
+		cur.Count = cur.Count + 1
+	}
+	cur.LastPoint = point
+	return cur
+}
 
-	factorx := (row[0] - bound.W) / deltax
-	factory := (bound.N - row[1]) / deltay
+// makes a line pretty neatly 
+func (cur Cursor) Make_Line(coords [][]int32) []uint32 {
+	// applying the first move to point
+	cur = cur.MovePoint(coords[0])
+	cur.Geometry = append(cur.Geometry, lineTo(uint32(len(coords)-1)))
 
-	xval := int32(factorx * 4096)
-	yval := int32(factory * 4096)
-
-	//here1 := uint32((row[0] - bound.w) / (bound.e - bound.w))
-	//here2 := uint32((bound.n-row[1])/(bound.n-bound.s)) * 4096
-	if xval >= 4095 {
-		xval = 4095
+	// iterating through each point
+	for _,point := range coords[1:] {
+		cur = cur.LinePoint(point)
 	}
 
-	if yval >= 4095 {
-		yval = 4095
-	}
+	cur.Geometry[3] = lineTo(cur.Count)
 
-	coords := []int32{xval, yval}
-	geometry := []uint32{moveTo(uint32(1))}
-	geometry = linerow([]int32{coords[0] - oldrow[0], coords[1] - oldrow[1]}, geometry)
-
-	return geometry, coords
+	return cur.Geometry
 
 }
 
-func Make_Line_Geom(coords [][]int32, position []int32) ([]uint32, []int32) {
-	var count uint32
-	count = 0
-	var geometry []uint32
-	var oldrow []int32
-	//total := map[uint32][]int32{}
-	//var linetocount uint32
-	linetocount := uint32(len(coords) - 1)
-
-	for _, row := range coords {
-		if count == 0 {
-			geometry = moverow([]int32{row[0] - position[0], row[1] - position[1]}, geometry)
-			geometry = append(geometry, lineTo(linetocount))
-
-			count = 1
-		} else {
-			geometry = linerow([]int32{row[0] - oldrow[0], row[1] - oldrow[1]}, geometry)
-		}
-		oldrow = row
+// makes a line pretty neatly 
+func (cur Cursor) Make_Line_Float(coords [][]float64) []uint32 {
+	// applying the first move to point
+	firstpoint := cur.Single_Point(coords[0])
+	cur = cur.MovePoint(firstpoint)
+	cur.Geometry = append(cur.Geometry, lineTo(uint32(len(coords)-1)))
+	// iterating through each point
+	for _,point := range coords[1:] {
+		cur = cur.LinePoint(cur.Single_Point(point))
 	}
 
-	return geometry, oldrow
+	cur.Geometry[3] = lineTo(cur.Count)
+		
+	return cur.Geometry
+
 }
+
 
 // reverses the coord list
 func reverse(coord [][]int32) [][]int32 {
 	current := len(coord) - 1
 	newlist := [][]int32{}
-	for current != -1 {
-		newlist = append(newlist, coord[current])
-		current = current - 1
-	}
-	return newlist
-}
-
-// reverses the coord list
-func reverse_float(coord [][]float64) [][]float64 {
-	current := len(coord) - 1
-	newlist := [][]float64{}
 	for current != -1 {
 		newlist = append(newlist, coord[current])
 		current = current - 1
@@ -146,15 +142,22 @@ func assert_winding_order(coord [][]int32, exp_orient string) [][]int32 {
 		return coord
 	}
 	return coord
+
 }
 
+
 // asserts a winding order
-func assert_winding_order_float(coord [][]float64, exp_orient string) [][]float64 {
+func (cur Cursor) Assert_Convert(coord [][]float64, exp_orient string) Cursor {
 	count := 0
-	firstpt := coord[0]
+	firstpt := cur.Single_Point(coord[0])
 	weight := 0.0
-	var oldpt []float64
-	for _, pt := range coord {
+	var oldpt []int32
+	newlist := [][]int32{firstpt}
+
+	// iterating through each float point
+	for _, floatpt := range coord {
+		pt := cur.Single_Point(floatpt)
+		newlist = append(newlist,pt)
 		if count == 0 {
 			count = 1
 		} else {
@@ -172,115 +175,133 @@ func assert_winding_order_float(coord [][]float64, exp_orient string) [][]float6
 	}
 
 	if orientation != exp_orient {
-		return reverse_float(coord)
-	} else {
-		return coord
-	}
-	return coord
+		newlist = reverse(newlist)
+	} 
+
+	newcur := Cursor{LastPoint:cur.LastPoint,Bounds:cur.Bounds,DeltaX:cur.DeltaX,DeltaY:cur.DeltaY}
+	newgeom := newcur.Make_Line(newlist)
+	newgeom = append(newgeom,closePath(1))
+	cur.Geometry = append(cur.Geometry,newgeom...)
+	cur.LastPoint = newlist[len(newlist)-1]
+
+	return cur
 }
 
-// makes a polygon for a list of polygon geometries.
-func Make_Polygon(coords [][][]int32, position []int32) ([]uint32, []int32) {
-	var count uint32
-	count = 0
-	var geometry []uint32
-	var oldrow []int32
-	//total := map[uint32][]int32{}
-	//var linetocount uint32
 
-	for i, coord := range coords {
-		if i == 0 {
-			coord = assert_winding_order(coord, "clockwise")
-			linetocount := uint32(len(coord) - 1)
+// makes a polygon
+func (cur Cursor) Make_Polygon(coords [][][]int32) []uint32 {
+	// applying the first ring
+	coord := coords[0]
+	coord = assert_winding_order(coord, "clockwise")
+	cur.Geometry = append(cur.Geometry,cur.Make_Line(coord)...)
+	cur.Geometry =  append(cur.Geometry, closePath(1))
 
-			for _, row := range coord {
-				if count == 0 {
-					geometry = moverow([]int32{row[0] - position[0], row[1] - position[1]}, geometry)
-					geometry = append(geometry, lineTo(linetocount))
-
-					count = 1
-				} else {
-					geometry = linerow([]int32{row[0] - oldrow[0], row[1] - oldrow[1]}, geometry)
-				}
-				oldrow = row
-
-			}
-			geometry = append(geometry, closePath(1))
-		} else {
-			count = 0
+	// if multiple rings exist proceed to add those also
+	if len(coords) > 1 {
+		for _,coord := range coords[1:] {
 			coord = assert_winding_order(coord, "counter")
-			linetocount := uint32(len(coord) - 1)
+			cur.Geometry = append(cur.Geometry,cur.Make_Line(coord)...)
+			cur.Geometry =  append(cur.Geometry, closePath(1))
 
-			for _, row := range coord {
-				if count == 0 {
-					geometry = moverow([]int32{row[0] - oldrow[0], row[1] - oldrow[1]}, geometry)
-					geometry = append(geometry, lineTo(linetocount))
-
-					count = 1
-				} else {
-					geometry = linerow([]int32{row[0] - oldrow[0], row[1] - oldrow[1]}, geometry)
-				}
-				oldrow = row
-
-			}
-			geometry = append(geometry, closePath(1))
 		}
-
 	}
 
-	return geometry, oldrow
+	return cur.Geometry
 }
 
-// makes a polygon for a list of polygon geometries.
-func Make_Polygon_Float(coords [][][]float64, position []int32, bds m.Extrema) ([]uint32, []int32) {
-	var count uint32
-	count = 0
-	var geometry []uint32
-	var oldrow []int32
-	//total := map[uint32][]int32{}
-	//var linetocount uint32
+// makes a polygon
+func (cur Cursor) Make_Polygon_Float(coords [][][]float64) []uint32 {
+	// applying the first ring
+	cur = cur.Assert_Convert(coords[0],"clockwise")
 
-	for i, coord := range coords {
-		if i == 0 {
-			coord = assert_winding_order_float(coord, "clockwise")
-			linetocount := uint32(len(coord) - 1)
+	// if multiple rings exist proceed to add those also
+	if len(coords) > 1 {
+		for _,coord := range coords[1:] {
+			cur = cur.Assert_Convert(coord,"counter")
 
-			for _, rowi := range coord {
-				row := single_point(pc.Point{rowi[0], rowi[1]}, bds)
-				if count == 0 {
-					geometry = moverow([]int32{row[0] - position[0], row[1] - position[1]}, geometry)
-					geometry = append(geometry, lineTo(linetocount))
-
-					count = 1
-				} else {
-					geometry = linerow([]int32{row[0] - oldrow[0], row[1] - oldrow[1]}, geometry)
-				}
-				oldrow = row
-
-			}
-			geometry = append(geometry, closePath(1))
-		} else {
-			count = 0
-			coord = assert_winding_order_float(coord, "counter")
-			linetocount := uint32(len(coord) - 1)
-
-			for _, rowi := range coord {
-				row := single_point(pc.Point{rowi[0], rowi[1]}, bds)
-				if count == 0 {
-					geometry = moverow([]int32{row[0] - oldrow[0], row[1] - oldrow[1]}, geometry)
-					geometry = append(geometry, lineTo(linetocount))
-
-					count = 1
-				} else {
-					geometry = linerow([]int32{row[0] - oldrow[0], row[1] - oldrow[1]}, geometry)
-				}
-				oldrow = row
-
-			}
-			geometry = append(geometry, closePath(1))
 		}
+	}
+	return cur.Geometry
+}
 
+
+// converts a single point from a coordinate to a tile point
+func (cur Cursor) Single_Point(point []float64) []int32 {
+	// converting to sperical coordinates
+	point = Convert_Point(point)
+
+	// getting factors to multiply by
+	factorx := (point[0] - cur.Bounds.W) / cur.DeltaX
+	factory := (cur.Bounds.N - point[1]) / cur.DeltaY
+
+	xval := int32(factorx * 4096)
+	yval := int32(factory * 4096)
+
+	if xval >= 4096 {
+		xval = 4096
 	}
 
-	return geometry, oldrow
+	if yval >= 4096 {
+		yval = 4096
+	}
+
+	if xval < 0 {
+		xval = 0
+	}
+	if yval < 0 {
+		yval = 0
+	}
+
+	return []int32{xval, yval}
 }
+
+func (cur Cursor) Make_Point_Float(point []float64) []uint32 {
+	newpoint := cur.Single_Point(point)
+
+	coords := []int32{newpoint[0], newpoint[1]}
+	cur.Geometry = []uint32{moveTo(uint32(1))}
+	cur = cur.LinePoint(coords)
+
+	return cur.Geometry
+
+}
+
+// converts a cursor to world points
+func Convert_Cursor(cur Cursor) Cursor {
+	// getting bounds
+	bounds := cur.Bounds
+
+	// getting ne point
+	en := []float64{bounds.E,bounds.N} // east, north point
+	ws := []float64{bounds.W,bounds.S} // west, south point
+
+	// converting these
+	en = Convert_Point(en)
+	ws = Convert_Point(ws)
+
+	// gettting north east west south
+	east := en[0]
+	north := en[1]
+	west := ws[0]
+	south := ws[1]
+	bounds = m.Extrema{N:north,E:east,S:south,W:west}
+
+	// getting deltax and deltay
+	deltax := east - west
+	deltay := north - south
+
+	// setting the new values
+	cur.Bounds = bounds
+	cur.DeltaX = deltax
+	cur.DeltaY = deltay
+
+	return cur
+}
+
+
+
+
+
+
+
+

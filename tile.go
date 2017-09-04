@@ -165,7 +165,11 @@ func Make_Tile(tileid m.TileID, feats []*geojson.Feature, prefix string,config C
 		os.MkdirAll(dir, os.ModePerm)
 	}
 
+	// intializing shit for cursor
 	bound := m.Bounds(tileid)
+	deltax := bound.E-bound.W
+	deltay := bound.N - bound.S
+
 	var keys []string
 	var values []*vector_tile.Tile_Value
 	keysmap := map[string]uint32{}
@@ -173,30 +177,35 @@ func Make_Tile(tileid m.TileID, feats []*geojson.Feature, prefix string,config C
 
 	// iterating through each feature
 	features := []*vector_tile.Tile_Feature{}
+	
+	// setting and converting coordinate	
+	cur := Cursor{LastPoint:[]int32{0,0},Bounds:bound,DeltaX:deltax,DeltaY:deltay,Count:0}
+	cur = Convert_Cursor(cur)
+
 	//position := []int32{0, 0}
 	for _, i := range feats {
+		// creating cursor used in geometry creation
+
 		var tags, geometry []uint32
 		var feat vector_tile.Tile_Feature
 		tags, keys, values, keysmap, valuesmap = Update_Properties(i.Properties, keys, values, keysmap, valuesmap)
 
 		// logic for point feature
 		if i.Geometry.Type == "Point" {
-			geometry, _ = Make_Point(i.Geometry.Point, []int32{0, 0}, bound)
+			geometry = cur.Make_Point_Float(i.Geometry.Point)
 			feat_type := vector_tile.Tile_POINT
 			feat = vector_tile.Tile_Feature{Tags: tags, Type: &feat_type, Geometry: geometry}
 			features = append(features, &feat)
 
 		} else if i.Geometry.Type == "LineString" {
-			eh := Make_Coords_Float(i.Geometry.LineString, bound, tileid)
-			if len(eh) > 0 {
-				geometry, _ = Make_Line_Geom(eh, []int32{0, 0})
+			if len(i.Geometry.LineString) >= 2 {
+				geometry = cur.Make_Line_Float(i.Geometry.LineString)
 				feat_type := vector_tile.Tile_LINESTRING
 				feat = vector_tile.Tile_Feature{Tags: tags, Type: &feat_type, Geometry: geometry}
 				features = append(features, &feat)
 			}
-
 		} else if i.Geometry.Type == "Polygon" {
-			geometry, _ = Make_Polygon(Make_Coords_Polygon_Float(i.Geometry.Polygon, bound), []int32{0, 0})
+			geometry = cur.Make_Polygon_Float(i.Geometry.Polygon)
 			feat_type := vector_tile.Tile_POLYGON
 			feat = vector_tile.Tile_Feature{Tags: tags, Type: &feat_type, Geometry: geometry}
 			features = append(features, &feat)
