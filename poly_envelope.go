@@ -327,7 +327,7 @@ func Children_Polygon(polygon *geojson.Feature, tileid m.TileID) map[m.TileID][]
 
 	// checking to see if the polygon is encompassed within a square
 	bdtileid := m.Bounds(tileid)
-	if math.Abs(AreaBds(bdtileid)-AreaBds(bd)) < math.Pow(.000001,2.0) {
+	if (math.Abs(AreaBds(bdtileid)-AreaBds(bd)) < math.Pow(.000001,2.0)) && len(poly) == 1 {
 		//fmt.Print("here\n")
 		totalmap := map[m.TileID][]*geojson.Feature{}
 

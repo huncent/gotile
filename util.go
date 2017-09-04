@@ -75,3 +75,15 @@ func Tilemap_String(tilemap map[m.TileID][]*geojson.Feature) string {
 	//shit = fmt.Sprintf("map[m.TileID][]{}%s",shit)
 
 }
+
+// makes a feature string list
+func FeatureStringList(v []*geojson.Feature) string {
+
+	stringlist := []string{}
+	for _,i := range v {
+		stringlist = append(stringlist,Feature_String(i))
+	}
+	shit :=fmt.Sprintf("[]*geojson.Feature{%s}",strings.Join(stringlist,","))
+	return shit
+
+}

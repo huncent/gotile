@@ -148,12 +148,6 @@ func Update_Properties2(properties map[string]interface{}, prop Properties_Confi
 
 	return tags, prop
 }
-	
-func check(e error) {
-    if e != nil {
-        panic(e)
-    }
-}
 
 // makes a single tile for a given polygon
 func Make_Tile(tileid m.TileID, feats []*geojson.Feature, prefix string,config Config) Vector_Tile {
