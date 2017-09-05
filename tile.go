@@ -6,9 +6,6 @@ import (
 	"os"
 	"strconv"
 	"vector-tile/2.1"
-	//"strings"
-	//"fmt"
-	//"io/ioutil"
 	"github.com/golang/protobuf/proto"
 	"reflect"
 	"sync"
@@ -223,12 +220,7 @@ func Make_Tile(tileid m.TileID, feats []*geojson.Feature, prefix string,config C
 
 	tile := vector_tile.Tile{}
 	tile.Layers = append(tile.Layers, &layer)
+	bytevals,_ := proto.Marshal(&tile)
 
-	bytevals, _ := proto.Marshal(&tile)
 	return Vector_Tile{Data:bytevals,Filename:filename,Tileid:tileid}
-	
-
-	//fmt.Printf("\r%s", filename)
 }
-
-

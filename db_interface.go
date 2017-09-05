@@ -8,10 +8,12 @@ import (
 	m "github.com/murphy214/mercantile"
 	pc "github.com/murphy214/polyclip"
 	"github.com/paulmach/go.geojson"
-	"reflect"
 	"strconv"
 	"strings"
+	"database/sql"
+	"sort"
 	//"sync"
+	"time"
 
 )
 
@@ -21,73 +23,6 @@ func Add_BBox(tablename string, tileid m.TileID) string {
 
 	return fmt.Sprintf("(%s.geom && ST_MakeEnvelope(%f, %f, %f, %f, 4326))", tablename, bds.W, bds.S, bds.E, bds.N)
 
-}
-
-// gets the geometry type of geometry text
-func get_type(text string) string {
-	val := strings.Split(text, "(")[0]
-	val = strings.Replace(val, " ", "", -1)
-	return val
-}
-
-// hacky way to get a polygon
-func get_polygon(polystring string) [][][]float64 {
-	polystring = polystring[7:]
-	polyvals := strings.Split(polystring, "),")
-	coords := [][][]float64{}
-
-	// iterating through each text ring
-	for _, ring := range polyvals {
-		ring = strings.Replace(ring, "(", "", -1)
-		ring = strings.Replace(ring, ")", "", -1)
-		ringfloat := [][]float64{}
-		is := strings.Split(ring, ",")
-
-		// iterating through each text point
-		for _, i := range is {
-			vals := strings.Split(i, " ")
-			x, _ := strconv.ParseFloat(vals[0], 64)
-			y, _ := strconv.ParseFloat(vals[1], 64)
-			ringfloat = append(ringfloat, []float64{x, y})
-		}
-
-		coords = append(coords, ringfloat)
-
-	}
-	//fmt.Print(coords, polystring, "\n")
-
-	return coords
-	//fmt.Print(polystring[7:], "\n")
-}
-
-// hacky way to get a linestring
-func get_linestring(polystring string) [][]float64 {
-	ring := polystring[10:]
-	ring = strings.Replace(ring, "(", "", -1)
-	ring = strings.Replace(ring, ")", "", -1)
-	ringfloat := [][]float64{}
-
-	// creatiing and iterating through each point
-	is := strings.Split(ring, ",")
-	for _, i := range is {
-		vals := strings.Split(i, " ")
-		x, _ := strconv.ParseFloat(vals[0], 64)
-		y, _ := strconv.ParseFloat(vals[1], 64)
-		ringfloat = append(ringfloat, []float64{x, y})
-	}
-
-	return ringfloat
-	//fmt.Print(polystring[7:], "\n")
-}
-
-// hacky way to get a point
-func get_point(polystring string) []float64 {
-	ring := polystring[6:]
-	ring = ring[1 : len(ring)-1]
-	vals := strings.Split(ring, " ")
-	x, _ := strconv.ParseFloat(vals[0], 64)
-	y, _ := strconv.ParseFloat(vals[1], 64)
-	return []float64{x, y}
 }
 
 // this function allows you interface with a postgis database
@@ -120,51 +55,38 @@ func DB_Interface(database string, query string) *geojson.FeatureCollection {
 
 	pos := len(keys) - 1
 	featcollection := &geojson.FeatureCollection{}
+
 	// iterating through each row of the queried data
 	for rows.Next() {
 		// creating properties map
+		var geometry geojson.Geometry
+
 		vals, _ := rows.Values()
 		tempmap := map[string]interface{}{}
 		for ii, i := range vals[:pos] {
 			tempmap[keys[ii]] = i
 		}
+		geometry.Scan(vals[pos])
+		feature := geojson.Feature{Geometry: &geometry, Properties: tempmap}
+		featcollection.Features = append(featcollection.Features, &feature)
 
-		// getting the geometry text
-		text := reflect.ValueOf(vals[pos]).String()
-
-		// getting the geometry type
-		geomtype := get_type(text)
-
-		// getting the right geometry from string
-		// adding the geojson on to the feature collection
-		if geomtype == "POLYGON" {
-			geom := get_polygon(text)
-			geomnew := geojson.Geometry{Polygon: geom, Type: "Polygon"}
-			feature := geojson.Feature{Geometry: &geomnew, Properties: tempmap}
-			featcollection.Features = append(featcollection.Features, &feature)
-
-		} else if geomtype == "LINESTRING" {
-			geom := get_linestring(text)
-			geomnew := geojson.Geometry{LineString: geom, Type: "LineString"}
-			feature := geojson.Feature{Geometry: &geomnew, Properties: tempmap}
-			featcollection.Features = append(featcollection.Features, &feature)
-
-		} else if geomtype == "POINT" {
-			geom := get_point(text)
-			geomnew := geojson.Geometry{Point: geom, Type: "Point"}
-			feature := geojson.Feature{Geometry: &geomnew, Properties: tempmap}
-			featcollection.Features = append(featcollection.Features, &feature)
-
-		}
 
 	}
 
 	return featcollection
 }
 
+// checking number of rows
+func checkCount(rows *pgx.Rows) (count int) {
+ 	for rows.Next() {
+    	rows.Scan(&count)
+    }   
+    return count
+}
+
 
 // getting the extent of a given database
-func Get_Extent(database string,tablename string) m.Extrema {
+func Get_Extent(database string,tablename string) (m.Extrema,int) {
 	sqlquery := fmt.Sprintf("SELECT ST_Extent(geom) as table_extent FROM %s;",tablename)
 
 	// intializing the config
@@ -195,7 +117,10 @@ func Get_Extent(database string,tablename string) m.Extrema {
 	east,_ := strconv.ParseFloat(vals[2],64)
 	north,_ := strconv.ParseFloat(vals[3],64)
 
-	return m.Extrema{N:north,S:south,E:east,W:west}
+    rows, _ = p.Query(fmt.Sprintf("SELECT COUNT(*) as count FROM  %s",tablename))
+ 	countrows := checkCount(rows)
+
+	return m.Extrema{N:north,S:south,E:east,W:west},countrows
 }
 
 
@@ -223,3 +148,137 @@ func Make_Tilelist(ext m.Extrema,minzoom int) []m.TileID {
 	return tilelist
 
 }
+
+// type for creating upper zoom data sets
+type Extent struct {
+	Bds m.Extrema
+	Area float64
+	Unique interface{}
+}
+
+// getting teh database extents
+func DB_Extents(database string,tablename string,uniquefield string) []Extent {
+	sqlquery := fmt.Sprintf("SELECT %s,ST_AsGeoJSON(ST_Envelope(geom)) FROM %s;",uniquefield,tablename)
+
+	// intializing the config
+	a := pgx.ConnPoolConfig{
+		ConnConfig: pgx.ConnConfig{
+			Host:     "localhost",
+			Port:     5432,
+			Database: database,
+			User:     "postgres",
+		},
+		MaxConnections: 1,
+	}
+
+	// creating the connection
+	p, _ := pgx.NewConnPool(a)
+
+	rows, _ := p.Query(sqlquery)
+	//var bbox string
+	var id interface{} 
+	var geom geojson.Geometry
+	extents := []Extent{}
+	for rows.Next() {
+		vals,_ := rows.Values()
+		geom.Scan(vals[1])
+
+		id = vals[0]
+		//bbox = vals[0].(string)
+		val := geom.Polygon[0]
+		bds := m.Extrema{S:val[0][1],N:val[1][1],W:val[0][0],E:val[2][0]}
+
+		area := (bds.N - bds.S) * (bds.E - bds.W)
+		extents = append(extents,Extent{Bds:bds,Area:area,Unique:id})
+
+	}
+	sort.Slice(extents, func(i, j int) bool { return extents[i].Area > extents[j].Area })
+
+	return extents
+}
+
+
+// makes a sql query for a tile specific query at the first zoom level
+// this function will then iteratively go through each query based on a rough memory calculation
+// to estimate how many top level routines can be throughput at once
+func Make_Bounds_Sql(database string,tablename string,basesql string,config Config) {
+	s := time.Now()
+	// getting the extent and number of rows
+	ext,num_b := Get_Extent(database,tablename)
+
+	// getting the config shit
+	config = Expand_Config(config)
+	config.Currentzoom = config.Minzoom
+	fmt.Print("Writing Layers ", config.Zooms, "\n")
+
+	// getting json sample
+	gjson := DB_Interface(database,basesql + " LIMIT 1;")
+
+	// reading geojson
+	var db *sql.DB
+	if config.Type == "mbtiles" {
+		db = Create_Database_Meta(config,gjson.Features[0])
+	}
+
+	// getting the total map for the upper zomos
+	totalmap := map[m.TileID]Vector_Tile{}
+	if len(config.Zoom_Config.Zoom_Map) > 0 {
+		// creating totalmap and shti
+		totalmap,config = Make_Upper_Zooms(database,tablename,basesql,config)
+
+		fmt.Print(totalmap,"\n")
+		// adding the totalmap to the db we created
+		Insert_Data2(totalmap,db)
+	}	
+
+	config.Number_Features = num_b
+
+	// getting the sema size
+	sema_size_sql := Size_Stovepipe(config) 
+	fmt.Printf("Max Make_Tiles_Sql Go Routines: %d\n",sema_size_sql)
+
+	// creating sema
+	var sema_sql = make(chan struct{}, sema_size_sql)
+
+	// getting the tile list
+	tilelist := Make_Tilelist(ext,config.Currentzoom)
+	count := 0
+	// iterating through each tile in the tilelist
+	if config.Maxzoom > config.Currentzoom {
+		c := make(chan []Vector_Tile) 
+		sizetilelist := len(tilelist)
+		for _,i := range tilelist {
+			go func(i m.TileID,c chan []Vector_Tile) {
+				sema_sql <- struct{}{}        // acquire token
+				defer func() { <-sema_sql }() // release token
+				count += 1
+				fmt.Printf("\n[%d/%d] Sql Tiles Started.\n",count,sizetilelist)
+
+				// getting query logic
+				bbox_logic := Add_BBox(tablename,i)
+				one_query := fmt.Sprintf("%s WHERE %s",basesql,bbox_logic)
+				
+				// selecint data and piping to channel
+				//DB_Interface(database,one_query).Features
+				c <-Make_Zoom_Drill(i, DB_Interface(database,one_query).Features, config.Prefix, config.Maxzoom,config)
+			}(i,c)
+		}
+
+		// iterating over tilelist
+		for range tilelist {
+			vtmap := <-c
+			Insert_Data3(vtmap,db)
+		}
+	}
+
+	// finishing creation of output type
+	if config.Type == "json" {
+		//Write_Json(totalmap,config.Outputjsonfilename)
+	} else if config.Type == "mbtiles" {
+		Make_Index(db)
+	}
+	fmt.Printf("Time creating mbtiles %s.\n",time.Now().Sub(s))
+}
+
+
+

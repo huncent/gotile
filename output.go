@@ -246,9 +246,6 @@ func Insert_Data2(newmap map[m.TileID]Vector_Tile,db *sql.DB) *sql.DB {
 		log.Fatal(err)
 	}
 
-	//values := [][]string{{"name","shit"},{"type","baselayer"},{"version","1.2"},{"description","shit"},{"format","pbf"}}
-
-
 	defer stmt.Close()
 	count := 0
 	total := 0
@@ -256,26 +253,8 @@ func Insert_Data2(newmap map[m.TileID]Vector_Tile,db *sql.DB) *sql.DB {
 
 
 	sizenewmap := len(newmap)
-    var b bytes.Buffer
-    gz := gzip.NewWriter(&b)
 
 	for k,v := range newmap {
-		if _, err := gz.Write(v.Data); err != nil {
-			panic(err)
-		}
-		if err := gz.Flush(); err != nil {
-			panic(err)
-		}
-
-		v.Data = b.Bytes()
-		//fmt.Print(v,"\n")
-		//if err := gz.Close(); err != nil {
-        //	panic(err)
-    	//}	
-		//fmt.Print(len(bb.Bytes()),len(v),count,"\n")
-		//bb := new(bytes.Buffer)
-    	b = *bytes.NewBuffer([]byte{})
-    	gz.Reset(&b)
 		k.Y = (1 << uint64(k.Z)) - 1 - k.Y 
 		_, err = stmt.Exec(int(k.Z),int(k.X),int(k.Y),v.Data)
 		if err != nil {
@@ -302,6 +281,53 @@ func Insert_Data2(newmap map[m.TileID]Vector_Tile,db *sql.DB) *sql.DB {
 	
 }
 
+// inserting data into shit
+func Insert_Data3(newmap []Vector_Tile,db *sql.DB) *sql.DB {
+	tx, err := db.Begin()
+	if err != nil {
+		log.Fatal(err)
+	}
+	
+	stmt, err := tx.Prepare("insert into tiles(zoom_level, tile_column,tile_row,tile_data) values(?, ?, ?, ?)")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer stmt.Close()
+	count := 0
+	total := 0
+	count3 := 0
+
+
+	sizenewmap := len(newmap)
+
+	for _,v := range newmap {
+		k := v.Tileid
+		k.Y = (1 << uint64(k.Z)) - 1 - k.Y 
+		_, err = stmt.Exec(int(k.Z),int(k.X),int(k.Y),v.Data)
+		if err != nil {
+			log.Fatal(err)
+		}
+		count += 1
+		if count == 1000 {
+			count = 0
+			total += 1000
+			fmt.Printf("\r[%d/%d] Compressing tiles and inserting into db.",total,sizenewmap)
+		}
+
+		count3 += 1
+		//fmt.Print(count,"\n")
+		//count += 1
+	}
+
+
+
+	tx.Commit()
+
+
+	return db
+	
+}
 
 
 func Make_Index(db *sql.DB) {
