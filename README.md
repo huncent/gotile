@@ -23,6 +23,10 @@ Go language's (and most programming languages) file creation is basically a wrap
 
 
 ### TODO
-* Support multi-geometries I almost want to phone this part in I always felt the mutli geometry structure was ridiculous, the bytes or space you save by keeping those objects together is vastly outweighed by the work you have to put in for supporting the code, In what essentailly amounts to saving the properties from being duplicated which they will be anyway. Maybe in geojson it makes sense but features are inherently going to be split up in vector tiles. Its also a little more finicky to support cursor geometries for Multi-geometries but that would just be a little debugging. Mainly its just the code complexity issue. So I may just iterate through the multi geometries and duplicate it into single geometry features.
-* Write more compresensive unit test cases 
-* Clean up code, evidence of hacking out different methods or implementations everywhere lol.
+* ~~Support multi-geometries~~ (Drills multi geoms to single geometries currently) 
+* ~~Write more compresensive unit test cases~~ (Added a few more tests however coverage is still shit) 
+* Clean up code, evidence of hacking out different methods or implementations everywhere lol. (still needs done)
+  - Also I think to clean up logging kind of hard to decide how to long as the process is recursive and concurrent as well, sort of hard to decide what to log.
+* Consider / test supporting geobuf in some capacity within the codebase, not sure how much I want to support currently.
+  - If this can be done effeciently memory usage will drop drastically of course. 
+* Show a few examles of the different apis etc.
