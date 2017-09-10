@@ -87,3 +87,31 @@ func FeatureStringList(v []*geojson.Feature) string {
 	return shit
 
 }
+
+// creates a vector tile string
+func VectorTileString(vt Vector_Tile) string {
+	eh := fmt.Sprintf("%+v",vt.Data)
+	eh = strings.Replace(eh," ",",",10000000000)
+	eh = "Data:[]byte{" + eh[1:len(eh)-1] + "}"
+	eh2 := fmt.Sprintf(`Filename:"%s"`,vt.Filename)
+
+	eh3 := fmt.Sprintf("Tileid:m.TileID%+v",vt.Tileid)
+	eh3 = strings.Replace(eh3," ",",",10000000)
+	stringvals := []string{eh,eh2,eh3}
+
+	totalstring := strings.Join(stringvals,",")
+	totalstring = fmt.Sprintf("Vector_Tile{%s}",totalstring)
+	return totalstring
+}
+
+// creates a vector tile string list
+func VectorTileListString(vts []Vector_Tile) string {
+	newlist := []string{}
+	for _,i := range vts {
+		newlist = append(newlist,VectorTileString(i))
+	}
+
+	totalstring := strings.Join(newlist,",")
+	totalstring = fmt.Sprintf("[]Vector_Tile{%s}",totalstring)
+	return totalstring
+}

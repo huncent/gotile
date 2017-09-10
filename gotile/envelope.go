@@ -55,7 +55,7 @@ func Make_Tilemap(feats *geojson.FeatureCollection, size int) (map[m.TileID][]*g
 	return totalmap,totalsize
 }
 
-
+// rounds a number to an adequate value 
 func Round(val float64, roundOn float64, places int ) (newVal float64) {
 	var round float64
 	pow := math.Pow(10, float64(places))
@@ -70,6 +70,7 @@ func Round(val float64, roundOn float64, places int ) (newVal float64) {
 	return
 }
 
+// calculates the maximum amount of concurrent actions that can be performed in memory 
 func Size_Stovepipe(config Config) int {
 	// getting the delta between the zooms 
 	delta := config.Maxzoom - config.Currentzoom - 1
@@ -170,14 +171,14 @@ func Make_Tilemap_Children(tilemap map[m.TileID][]*geojson.Feature, prefix strin
 }
 
 
-
-//var sem = make(chan struct{}, 100)
-
 // makes children and returns tilemap of a first intialized tilemap
-func Intialize_Drill(tilemap map[m.TileID][]*geojson.Feature,config Config, db *sql.DB) {
+func Intialize_Drill(tilemap map[m.TileID][]*geojson.Feature,config Config, db *sql.DB) []Vector_Tile {
 	// getting size sema (i.e. the limitation on how many go functions are called )
 	// in the routine below, calculated by teh memory input config
 	size_sem := Size_Stovepipe(config)
+	if size_sem == 0 {
+		size_sem = 1
+	}
 	fmt.Printf("Max Make_Zoom_Drill Go Routines: %d\n",size_sem)
 
 	// creating sema
@@ -210,63 +211,21 @@ func Intialize_Drill(tilemap map[m.TileID][]*geojson.Feature,config Config, db *
 
 	total := 0
 	// iterating through each value in the tilemap
+	totalvts := []Vector_Tile{}
 	for range tilemap {
 		vts := <- c
 		total += len(vts)
-		Insert_Data3(vts,db)
+		if config.Type == "mbtiles" {
+			Insert_Data3(vts,db)
+
+		} else if config.Type == "json" {
+			totalvts = append(totalvts,vts...)
+		}
 		fmt.Printf("\nTotal Number of Tiles %d\n",total)
 
 	}
-}
-
-// makes children and returns tilemap of a first intialized tilemap
-func Intialize_Drill_Sql(tilemap map[m.TileID][]*geojson.Feature,config Config,kk m.TileID) []Vector_Tile {
-	// getting size sema (i.e. the limitation on how many go functions are called )
-	// in the routine below, calculated by teh memory input config
-	size_sem := Size_Stovepipe(config)
-	fmt.Printf("Max Make_Zoom_Drill Go Routines: %d\n",size_sem)
-
-	// creating sema
-	var sema = make(chan struct{}, size_sem)
-
-	// intializing values	
-	prefix := config.Prefix
-	endsize := config.Maxzoom
-	count2 := 0
-	sizetilemap := len(tilemap)
-	//var wg sync.WaitGroup
-	count := 0
-	c := make(chan []Vector_Tile)
-	for k, v := range tilemap {
-
-		go func(k m.TileID, v []*geojson.Feature,c chan []Vector_Tile) {
-
-			sema <- struct{}{}        // acquire token
-			defer func() { <-sema }() // release token
-			c <- Make_Zoom_Drill(k, v, prefix, endsize,config)
-			//fmt.Printf("[%d / %d] Tiles Recursively Drilled to endsize, %d\n", count2, sizetilemap, endsize)
-		}(k, v,c)
-
-
-
-		count +=1 
-	}
-	//wg.Wait()
-
-	total := 0
-	totalvts := []Vector_Tile{}
-	// iterating through each value in the tilemap
-	for range tilemap {
-		totalvts = append(totalvts,<- c...)
-		total += len(totalvts)
-		fmt.Printf("\n[%d / %d] Tile: %+v, Total Drilled Below: %d\n", count2, sizetilemap,kk, total)
-		//fmt.Printf("\nTotal Number of Tiles %d for %+v\n",total,kk)
-		count2 += 1
-	}
 	return totalvts
 }
-
-
 
 
 // vector tile struct 

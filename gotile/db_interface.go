@@ -124,8 +124,30 @@ func Get_Extent(database string,tablename string) (m.Extrema,int) {
 }
 
 
+// evavulate extrema
+func Lint_Extrema(ext m.Extrema,minzoom int) m.Extrema {
+	// getting en
+	en := []float64{ext.E,ext.N}
+	en_tile := m.Tile(en[0],en[1],minzoom)
+	en_bounds := m.Bounds(en_tile) 
+	ext.N = en_bounds.N
+	ext.E = en_bounds.E
+
+	// getting ws
+	ws := []float64{ext.W,ext.S}
+	ws_tile := m.Tile(ws[0],ws[1],minzoom)
+	ws_bounds := m.Bounds(ws_tile) 
+	ext.S = ws_bounds.S
+	ext.W = ws_bounds.W
+
+	return ext
+}
+
 // making the tilemap for each tileslice in a given row
 func Make_Tilelist(ext m.Extrema,minzoom int) []m.TileID {
+	// getting linted extrema
+	ext = Lint_Extrema(ext,minzoom)
+	
 	tileid := m.Tile(ext.W,ext.S,minzoom)
 	bds := m.Bounds(tileid)
 	startpt := []float64{(bds.E+bds.W)/2.0,(bds.N+bds.S)/2.0}
@@ -221,15 +243,8 @@ func Make_Bounds_Sql(database string,tablename string,basesql string,config Conf
 	}
 
 	// getting the total map for the upper zomos
-	totalmap := map[m.TileID]Vector_Tile{}
-	if len(config.Zoom_Config.Zoom_Map) > 0 {
-		// creating totalmap and shti
-		totalmap,config = Make_Upper_Zooms(database,tablename,basesql,config)
+	//totalmap := map[m.TileID]Vector_Tile{}
 
-		fmt.Print(totalmap,"\n")
-		// adding the totalmap to the db we created
-		Insert_Data2(totalmap,db)
-	}	
 
 	config.Number_Features = num_b
 

@@ -40,6 +40,7 @@ type Config struct {
 	Zoom_Config Upper_Zoom_Config
 }
 
+// epands the configuration structure
 func Expand_Config(config Config) Config {
 	count := config.Minzoom
 	zooms := []int{}
@@ -110,54 +111,25 @@ func Make_Tiles(gjson *geojson.FeatureCollection, config Config) {
 
 	// drilling if needed
 	// sending the tilemap into the driller
-	db = Insert_Data2(totalmap,db)
+	if config.Type == "mbtiles" {
+		db = Insert_Data2(totalmap,db)
+	}
 
 	// drilling down tilemap
-	Intialize_Drill(tilemap,config,db)
+	totalvts := Intialize_Drill(tilemap,config,db)
 
+	// sending into the correct function for output type\
 	if config.Type == "json" {
+		// adding totalvts to the totalmap
+		for _,i := range totalvts {
+			totalmap[i.Tileid] = i
+		}
+
 		Write_Json(totalmap,config.Outputjsonfilename)
 	} else if config.Type == "mbtiles" {
 		Make_Index(db)
 	}
 
 	fmt.Printf("\nCompleted in %s.\n", time.Now().Sub(s))
-}
-
-// creates the tiles from a given configuration
-func Make_Tiles_Sql(gjson *geojson.FeatureCollection, config Config,k m.TileID) map[m.TileID]Vector_Tile {
-	// creating config expansion
-	fmt.Print("Writing Layers ", config.Zooms, "\n")
-
-	s := time.Now()
-
-	// iterating through each zoom
-	// creating tilemap
-	// getting prefix and min zooom 
-	//prefix := config.Prefix
-	config.Currentzoom = config.Minzoom
-	kk := k
-
-
-	// creating totalmap for tiles under 5 
-	// any tiles under 5 arent worth recursively drilling
-	totalmap := map[m.TileID]Vector_Tile{}
-	tilemap := map[m.TileID][]*geojson.Feature{kk:gjson.Features}
-
-	// number of features
-	config.Number_Features = 1
-
-	// drilling if needed
-	vts := Intialize_Drill_Sql(tilemap,config,kk)
-
-	// iterating through vts
-	// completing totalmap
-	for _,v := range vts {
-		totalmap[v.Tileid] = v
-	}	
-
-	fmt.Printf("Time taken to complete %+v: %s",k,time.Now().Sub(s))
-
-	return totalmap
 }
 

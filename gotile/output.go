@@ -9,8 +9,6 @@ import (
 	m "github.com/murphy214/mercantile"
 	"encoding/json"
 	"reflect"
-	"bytes"
-	"compress/gzip"
 	"github.com/paulmach/go.geojson"
 	"os"
 	"log"
@@ -161,80 +159,6 @@ func Reflect_Fields(mymap map[string]interface{}) map[string]string {
 
 
 // inserting data into shit
-func Insert_Data(newmap map[m.TileID]Vector_Tile,db *sql.DB) *sql.DB {
-	tx, err := db.Begin()
-	if err != nil {
-		log.Fatal(err)
-	}
-	
-	stmt, err := tx.Prepare("insert into tiles(zoom_level, tile_column,tile_row,tile_data) values(?, ?, ?, ?)")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	//values := [][]string{{"name","shit"},{"type","baselayer"},{"version","1.2"},{"description","shit"},{"format","pbf"}}
-
-
-	defer stmt.Close()
-	count := 0
-	total := 0
-	counter := 0
-	count3 := 0
-	sizenewmap := len(newmap)
-	c := make(chan Vector_Tile)
-    var b bytes.Buffer
-    gz := gzip.NewWriter(&b)
-
-	for k,v := range newmap {
-		go func(k m.TileID,v Vector_Tile,c chan Vector_Tile) {
-			gz.Reset(&b)
-			if _, err := gz.Write(v.Data); err != nil {
-				panic(err)
-			}
-			if err := gz.Flush(); err != nil {
-				panic(err)
-			}
-
-			v.Data = b.Bytes()
-			c <- v
-		}(k,v,c)
-		counter += 1
-		if counter == 1000 || (sizenewmap - 1 == count3){
-			count2 := 0
-			for count2 < counter {
-				v := <-c
-				k := v.Tileid
-				k.Y = (1 << uint64(k.Z)) - 1 - k.Y 
-				_, err = stmt.Exec(int(k.Z),int(k.X),int(k.Y),v.Data)
-				if err != nil {
-					log.Fatal(err)
-				}
-				count += 1
-				count2 += 1
-				if count == 1000 {
-					count = 0
-					total += 1000
-					fmt.Printf("\r[%d/%d] Compressing tiles and inserting into db.",total,sizenewmap)
-				}
-
-			}
-			counter = 0
-		}
-		count3 += 1
-		//fmt.Print(count,"\n")
-		//count += 1
-	}
-
-
-
-	tx.Commit()
-
-
-	return db
-	
-}
-
-// inserting data into shit
 func Insert_Data2(newmap map[m.TileID]Vector_Tile,db *sql.DB) *sql.DB {
 	tx, err := db.Begin()
 	if err != nil {
@@ -343,25 +267,6 @@ func Make_Index(db *sql.DB) {
 	}
 
 }
-
-
-
-// gzip bytes 
-func Gzip_Bytes(in []byte) []byte {
-    var b bytes.Buffer
-    gz := gzip.NewWriter(&b)
-    if _, err := gz.Write(in); err != nil {
-        panic(err)
-    }
-    if err := gz.Flush(); err != nil {
-        panic(err)
-    }
-    if err := gz.Close(); err != nil {
-        panic(err)
-    }
-    return b.Bytes()
-}
-
 
 // writes a json file
 func Write_Json(totalmap map[m.TileID]Vector_Tile,jsonfilename string) {

@@ -2,7 +2,6 @@ package tile_surge
 
 import (
 	m "github.com/murphy214/mercantile"
-
 	"testing"
 
 )
