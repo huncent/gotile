@@ -10,11 +10,8 @@ import (
 	"github.com/paulmach/go.geojson"
 	"strconv"
 	"strings"
-	"database/sql"
 	"sort"
 	//"sync"
-	"time"
-
 )
 
 // returns the bbox logic from a table name and tileid
@@ -220,80 +217,7 @@ func DB_Extents(database string,tablename string,uniquefield string) []Extent {
 }
 
 
-// makes a sql query for a tile specific query at the first zoom level
-// this function will then iteratively go through each query based on a rough memory calculation
-// to estimate how many top level routines can be throughput at once
-func Make_Bounds_Sql(database string,tablename string,basesql string,config Config) {
-	s := time.Now()
-	// getting the extent and number of rows
-	ext,num_b := Get_Extent(database,tablename)
 
-	// getting the config shit
-	config = Expand_Config(config)
-	config.Currentzoom = config.Minzoom
-	fmt.Print("Writing Layers ", config.Zooms, "\n")
-
-	// getting json sample
-	gjson := DB_Interface(database,basesql + " LIMIT 1;")
-
-	// reading geojson
-	var db *sql.DB
-	if config.Type == "mbtiles" {
-		db = Create_Database_Meta(config,gjson.Features[0])
-	}
-
-	// getting the total map for the upper zomos
-	//totalmap := map[m.TileID]Vector_Tile{}
-
-
-	config.Number_Features = num_b
-
-	// getting the sema size
-	sema_size_sql := Size_Stovepipe(config) 
-	fmt.Printf("Max Make_Tiles_Sql Go Routines: %d\n",sema_size_sql)
-
-	// creating sema
-	var sema_sql = make(chan struct{}, sema_size_sql)
-
-	// getting the tile list
-	tilelist := Make_Tilelist(ext,config.Currentzoom)
-	count := 0
-	// iterating through each tile in the tilelist
-	if config.Maxzoom > config.Currentzoom {
-		c := make(chan []Vector_Tile) 
-		sizetilelist := len(tilelist)
-		for _,i := range tilelist {
-			go func(i m.TileID,c chan []Vector_Tile) {
-				sema_sql <- struct{}{}        // acquire token
-				defer func() { <-sema_sql }() // release token
-				count += 1
-				fmt.Printf("\n[%d/%d] Sql Tiles Started.\n",count,sizetilelist)
-
-				// getting query logic
-				bbox_logic := Add_BBox(tablename,i)
-				one_query := fmt.Sprintf("%s WHERE %s",basesql,bbox_logic)
-				
-				// selecint data and piping to channel
-				//DB_Interface(database,one_query).Features
-				c <-Make_Zoom_Drill(i, DB_Interface(database,one_query).Features, config.Prefix, config.Maxzoom,config)
-			}(i,c)
-		}
-
-		// iterating over tilelist
-		for range tilelist {
-			vtmap := <-c
-			Insert_Data3(vtmap,db)
-		}
-	}
-
-	// finishing creation of output type
-	if config.Type == "json" {
-		//Write_Json(totalmap,config.Outputjsonfilename)
-	} else if config.Type == "mbtiles" {
-		Make_Index(db)
-	}
-	fmt.Printf("Time creating mbtiles %s.\n",time.Now().Sub(s))
-}
 
 
 

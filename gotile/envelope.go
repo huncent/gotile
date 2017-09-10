@@ -216,7 +216,7 @@ func Intialize_Drill(tilemap map[m.TileID][]*geojson.Feature,config Config, db *
 		vts := <- c
 		total += len(vts)
 		if config.Type == "mbtiles" {
-			Insert_Data3(vts,db)
+			Insert_Data3(vts,db,config)
 
 		} else if config.Type == "json" {
 			totalvts = append(totalvts,vts...)

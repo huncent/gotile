@@ -115,3 +115,22 @@ func VectorTileListString(vts []Vector_Tile) string {
 	totalstring = fmt.Sprintf("[]Vector_Tile{%s}",totalstring)
 	return totalstring
 }
+
+
+func TileIDString(tileid m.TileID) string {
+	tilestr := fmt.Sprintf("%+v",tileid)
+	tilestr = strings.Replace(tilestr," ",",",1000000)
+	tilestr = fmt.Sprintf("m.TileID%s",tilestr)
+	return tilestr
+}
+
+
+func TileListString(tileids []m.TileID) string {
+	totalstring := []string{}
+	for _,i := range tileids {
+		totalstring = append(totalstring,TileIDString(i))
+	}
+
+	totalstr := strings.Join(totalstring,",")
+	return fmt.Sprintf("[]m.TileID{%s}",totalstr)
+}

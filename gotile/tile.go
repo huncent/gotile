@@ -191,9 +191,12 @@ func Make_Tile(tileid m.TileID, feats []*geojson.Feature, prefix string,config C
 		} else if i.Geometry.Type == "LineString" {
 			if len(i.Geometry.LineString) >= 2 {
 				geometry = cur.Make_Line_Float(i.Geometry.LineString)
-				feat_type := vector_tile.Tile_LINESTRING
-				feat = vector_tile.Tile_Feature{Tags: tags, Type: &feat_type, Geometry: geometry}
-				features = append(features, &feat)
+				if geometry[3] > 2 {
+					feat_type := vector_tile.Tile_LINESTRING
+					feat = vector_tile.Tile_Feature{Tags: tags, Type: &feat_type, Geometry: geometry}
+					features = append(features, &feat)
+				}
+
 			}
 		} else if i.Geometry.Type == "Polygon" {
 			geometry = cur.Make_Polygon_Float(i.Geometry.Polygon)
