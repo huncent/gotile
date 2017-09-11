@@ -43,6 +43,11 @@ npm install mbview
 mbview county.mbtiles
 ```
 
+# Output View
+<p align="center">
+  <img src="https://user-images.githubusercontent.com/10904982/30285299-ae8a8710-96eb-11e7-9a29-bf294ab2cdc9.gif" alt="Output"/>
+</p>
+
 
 ### TODO
 * ~~Support multi-geometries~~ (Drills multi geoms to single geometries currently) 
