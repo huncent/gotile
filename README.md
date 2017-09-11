@@ -44,10 +44,8 @@ mbview county.mbtiles
 ```
 
 # Output View
-<p align="center">
-  <img src="https://user-images.githubusercontent.com/10904982/30285299-ae8a8710-96eb-11e7-9a29-bf294ab2cdc9.gif" alt="Output"/>
-</p>
 
+![](https://user-images.githubusercontent.com/10904982/30285563-81ecf430-96ec-11e7-9778-52141b18d742.png)
 
 ### TODO
 * ~~Support multi-geometries~~ (Drills multi geoms to single geometries currently) 
