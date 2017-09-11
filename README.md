@@ -19,7 +19,29 @@ Go language's (and most programming languages) file creation is basically a wrap
 - **tile.go** - handles the creation of a single tile and outputs a structure that contains the raw tile byte data the file directory associated with it and the actual tileid. 
 - **util.go** - takes a few important objects within this pipeline as a golang object and returns a string that can be copy and pasted as a test case into a struct in other words does all the parsing to generate a structure raw from the stucture itself. 
 
+# Example 
 
+```go
+package main 
+
+import (
+	t "github.com/murphy214/gotile/gotile"
+)
+
+
+func main() {
+	gjson := t.Read_Geojson("county.geojson")
+	config := t.Config{Minzoom:0,Maxzoom:13,Prefix:"county",Type:"mbtiles",New_Output:true,Outputmbtilesfilename:"county.mbtiles"}
+	t.Make_Tiles(gjson,config)
+}
+```
+
+**To view output install mbview with node and export a mapbox key to global env**
+
+```
+npm install mbview
+mbview county.mbtiles
+```
 
 
 ### TODO
