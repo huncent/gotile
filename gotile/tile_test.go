@@ -5,7 +5,7 @@ import (
 	"testing"
 	"github.com/paulmach/go.geojson"
 	h "github.com/mitchellh/hashstructure"
-	"vector-tile/2.1"
+	"./vector-tile/2.1"
 )
 
 // hashs a given tv structure
